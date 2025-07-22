@@ -1,0 +1,22 @@
+/* src/assets/styles/global.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Estilos personalizados adicionales si es necesario */
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  background-color: #f0f2f5; /* Un gris claro similar al de la imagen */
+}
+
+/* Puedes añadir más estilos para replicar el look and feel de PrimeTrack */
+.btn-primary {
+  @apply bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline;
+}
+
+.input-field {
+  @apply shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline;
+}
