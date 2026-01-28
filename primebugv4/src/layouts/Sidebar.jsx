@@ -1,138 +1,113 @@
 // src/layouts/Sidebar.jsx
 import React, { useState, useEffect } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext.jsx';
-import { doc, getDoc } from 'firebase/firestore';
+import { NavLink, Link } from 'react-router-dom';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
-import Tippy from '@tippyjs/react';
-import {
-    FaTachometerAlt, FaShieldAlt, FaUsers, FaFolderOpen, FaInfoCircle,
-    FaUserFriends, FaBug, FaSignOutAlt
-} from 'react-icons/fa';
+import { useAuth } from '../contexts/AuthContext.jsx';
+import { FaTachometerAlt, FaClipboardList, FaUsers, FaBug, FaPlus, FaSignOutAlt, FaAngleDown, FaProjectDiagram } from 'react-icons/fa';
 
-const Sidebar = ({ projectId }) => {  
-  const { signOut, user, profile } = useAuth();
-  const [currentProject, setCurrentProject] = useState(null);
-  const location = useLocation();
+const Sidebar = ({ isSidebarOpen }) => {
+    const [projects, setProjects] = useState([]);
+    const [showProjects, setShowProjects] = useState(true);
+    const { user, profile, signOut } = useAuth(); // Usamos el perfil del contexto
 
-  // 1. Obtener datos del proyecto activo desde Firestore (CORREGIDO)
-  useEffect(() => {
-    const fetchProjectName = async () => {
-      // Solo ejecutar si tenemos projectId Y el usuario está cargado.
-      if (projectId && user) {
-        try {
-          const docRef = doc(db, "projects", projectId);
-          const docSnap = await getDoc(docRef);
-          if (docSnap.exists()) {
-            setCurrentProject({ id: docSnap.id, ...docSnap.data() });
-          }
-        } catch (error) {
-          console.error("Error al cargar nombre del proyecto (Sidebar):", error.message);
+    useEffect(() => {
+        let unsubscribe;
+        if (user) {
+            // Espera a que `user` exista antes de hacer la consulta.
+            const q = query(collection(db, "projects"), where("members", "array-contains", user.uid));
+            
+            unsubscribe = onSnapshot(q, (snapshot) => {
+                const projectsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                setProjects(projectsData);
+            }, (error) => {
+                // Este error es normal si el usuario acaba de registrarse y las reglas
+                // de seguridad tardan en aplicarse.
+                console.warn("Advertencia en Sidebar (puede ser temporal):", error.message);
+            });
         }
-      } else {
-        setCurrentProject(null);
-      }
-    };
-
-    fetchProjectName();
-  }, [projectId, user]); // <-- Dependencia de 'user' añadida para evitar race conditions
-
-  const handleLogout = async () => {
-    if (window.confirm("¿Estás seguro de que deseas cerrar sesión?")) {
-      await signOut();
-    }
-  };
-  
-  const getNavLinkClasses = ({ isActive }) => {
-    const baseClasses = "flex items-center px-4 py-3 text-sm font-bold rounded-xl transition-all duration-200 group";
-    const activeClasses = "bg-indigo-600 text-white shadow-lg shadow-indigo-100";
-    const inactiveClasses = "text-slate-400 hover:bg-slate-50 hover:text-indigo-600";
-    return `${baseClasses} ${isActive ? activeClasses : inactiveClasses}`;
-  };
-
-  const getSubLinkClasses = ({ isActive }) => {
-    const baseClasses = "flex items-center pl-11 pr-4 py-2 text-xs font-bold rounded-lg transition-all";
-    const activeClasses = "text-indigo-600 bg-indigo-50";
-    const inactiveClasses = "text-slate-400 hover:text-slate-600 hover:bg-slate-50";
-    return `${baseClasses} ${isActive ? activeClasses : inactiveClasses}`;
-  };
-
-  return (
-    <div className="w-72 bg-white border-r border-slate-100 flex flex-col h-screen shrink-0">
-      <div className="p-8">
-        <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-200">
-            <FaBug className="text-white text-xl" />
-          </div>
-          <h1 className="text-xl font-black text-slate-800 tracking-tighter">PrimeTrack</h1>
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto px-4 custom-scrollbar">
-        <div className="mb-8">
-            <h2 className="px-4 mb-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Menú Principal</h2>
-            <nav className="space-y-2">
-                <NavLink to="/dashboard" className={getNavLinkClasses}>
-                    <FaTachometerAlt className="mr-3 text-lg" />
-                    Dashboard
-                </NavLink>
-                <NavLink to="/equipos" className={getNavLinkClasses}>
-                    <FaShieldAlt className="mr-3 text-lg" />
-                    Equipos
-                </NavLink>
-                <NavLink to="/miembros" className={getNavLinkClasses}>
-                    <FaUsers className="mr-3 text-lg" />
-                    Directorio
-                </NavLink>
-                <NavLink to="/proyectos" className={getNavLinkClasses}>
-                    <FaFolderOpen className="mr-3 text-lg" />
-                    Proyectos
-                </NavLink>
-            </nav>
-        </div>
-
-        {currentProject && (
-          <div className="mb-8 animate-fade-in">
-            <h2 className="px-4 mb-4 text-[10px] font-black text-slate-400 uppercase tracking-widest truncate">
-              Proyecto: {currentProject.nombre}
-            </h2>
-            <nav className="space-y-1">
-              <NavLink to={`/proyectos/${projectId}`} end className={getSubLinkClasses}>
-                <FaInfoCircle className="mr-2" /> Visión General
-              </NavLink>
-              <NavLink to={`/proyectos/${projectId}/miembros`} className={getSubLinkClasses}>
-                <FaUserFriends className="mr-2" /> Equipo Asignado
-              </NavLink>
-              <NavLink to={`/proyectos/${projectId}/issues`} className={getSubLinkClasses}>
-                <FaBug className="mr-2" /> Issues / Bugs
-              </NavLink>
-            </nav>
-          </div>
-        )}
-      </div>
-
-      <div className="p-4 bg-slate-50/50 border-t border-slate-100">
-        {user && (
-          <div className="flex items-center p-3 mb-4 bg-white rounded-2xl shadow-sm border border-slate-100">
-            <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold shadow-inner shrink-0">
-              {profile?.nombre_completo?.charAt(0) || user.email.charAt(0).toUpperCase()}
-            </div>
-            <div className="ml-3 min-w-0">
-              <p className="text-sm font-bold text-slate-800 truncate">{profile?.nombre_completo || 'Usuario'}</p>
-              <p className="text-[10px] text-slate-400 truncate">{user.email}</p>
-            </div>
-          </div>
-        )}
         
-        <button
-          onClick={handleLogout}
-          className="w-full flex items-center justify-center py-3 px-4 rounded-xl bg-white border border-slate-200 text-slate-600 font-bold text-sm hover:bg-red-50 hover:text-red-600 hover:border-red-100 transition-all duration-200"
-        >
-          <FaSignOutAlt className="mr-2" /> Cerrar Sesión
-        </button>
-      </div>
-    </div>
-  );
+        // Limpiar el listener al desmontar o si el usuario cambia
+        return () => {
+            if (unsubscribe) {
+                unsubscribe();
+            }
+        };
+    }, [user]); // La dependencia es solo `user`
+
+    const navLinkClasses = "flex items-center px-4 py-2 text-sm font-bold text-gray-300 rounded-lg hover:bg-gray-700 hover:text-white transition-colors";
+    const activeNavLinkClasses = "bg-gray-900 text-white";
+
+    return (
+        <aside className={`fixed top-0 left-0 h-full bg-gray-800 text-white transition-all duration-300 ${isSidebarOpen ? 'w-64' : 'w-20'} shadow-xl z-10`}>
+            <div className="flex flex-col h-full">
+                {/* Logo y Nombre */}
+                <div className="flex items-center justify-center h-20 border-b border-gray-700">
+                    <FaBug className={`text-3xl text-indigo-400 ${isSidebarOpen ? 'mr-3' : ''}`}/>
+                    {isSidebarOpen && <span className="text-xl font-bold whitespace-nowrap">PrimeBug</span>}
+                </div>
+
+                {/* Navegación Principal */}
+                <nav className="flex-1 px-4 py-6 space-y-2">
+                    <NavLink to="/" className={({ isActive }) => `${navLinkClasses} ${isActive ? activeNavLinkClasses : ''}`}>
+                        <FaTachometerAlt className={`text-lg ${isSidebarOpen ? 'mr-4' : 'mx-auto'}`} />
+                        {isSidebarOpen && <span>Dashboard</span>}
+                    </NavLink>
+                    <NavLink to="/bugs" className={({ isActive }) => `${navLinkClasses} ${isActive ? activeNavLinkClasses : ''}`}>
+                        <FaBug className={`text-lg ${isSidebarOpen ? 'mr-4' : 'mx-auto'}`} />
+                        {isSidebarOpen && <span>Mis Bugs</span>}
+                    </NavLink>
+                    <NavLink to="/equipos" className={({ isActive }) => `${navLinkClasses} ${isActive ? activeNavLinkClasses : ''}`}>
+                        <FaUsers className={`text-lg ${isSidebarOpen ? 'mr-4' : 'mx-auto'}`} />
+                        {isSidebarOpen && <span>Equipos</span>}
+                    </NavLink>
+
+                    {/* Sección de Proyectos */}
+                     <div className="pt-4">
+                        <button onClick={() => setShowProjects(!showProjects)} className="w-full flex justify-between items-center px-4 py-2 text-sm font-bold text-gray-400 hover:text-white">
+                            <div className="flex items-center">
+                                <FaProjectDiagram className={`text-lg ${isSidebarOpen ? 'mr-4' : 'mx-auto'}`} />
+                                {isSidebarOpen && <span>Proyectos</span>}
+                            </div>
+                            {isSidebarOpen && <FaAngleDown className={`transition-transform ${showProjects ? 'rotate-180' : ''}`} />}
+                        </button>
+                        {showProjects && isSidebarOpen && (
+                            <div className="mt-2 space-y-1 pl-8 pr-4">
+                                {projects.map(project => (
+                                     // RUTA CORREGIDA: Apunta a la lista de issues del proyecto
+                                    <NavLink key={project.id} to={`/proyectos/${project.id}/issues`} className={({ isActive }) => `block px-3 py-2 text-xs font-medium rounded-md hover:bg-gray-700 ${isActive ? 'text-white' : 'text-gray-400'}`}>
+                                        {project.nombre}
+                                    </NavLink>
+                                ))}
+                                <Link to="/proyectos/crear" className="flex items-center px-3 py-2 text-xs font-bold text-indigo-300 hover:text-indigo-200">
+                                    <FaPlus className="mr-2" /> Nuevo Proyecto
+                                </Link>
+                            </div>
+                        )}
+                    </div>
+                </nav>
+
+                {/* Footer del Sidebar */}
+                <div className="px-4 py-4 border-t border-gray-700">
+                    {isSidebarOpen ? (
+                        <div className="flex items-center">
+                            <div className="flex-1">
+                                <p className="text-sm font-bold text-white">{profile?.nombre_completo || 'Cargando...'}</p>
+                                <p className="text-xs text-gray-400">{user?.email}</p>
+                            </div>
+                            <button onClick={signOut} className="p-2 text-gray-400 hover:text-white rounded-full hover:bg-gray-700">
+                                <FaSignOutAlt />
+                            </button>
+                        </div>
+                    ) : (
+                        <button onClick={signOut} className="w-full flex justify-center p-3 text-gray-400 hover:text-white rounded-lg hover:bg-gray-700">
+                            <FaSignOutAlt />
+                        </button>
+                    )}
+                </div>
+            </div>
+        </aside>
+    );
 };
 
 export default Sidebar;
