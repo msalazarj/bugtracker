@@ -1,48 +1,105 @@
 // src/services/dashboard.js
-// Propósito: Simular la obtención de estadísticas para el Dashboard.
+import { db, auth } from '../firebase';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 
-const mockActiveProjects = [
-  { id: 'proj_001', name: 'Desarrollo App PrimeTrack' },
-  { id: 'proj_002', name: 'Campaña de Marketing Q3' },
-  { id: 'proj_003', name: 'Investigación de Nuevo Mercado' },
-];
-
+/**
+ * Obtiene los proyectos donde el usuario actual es miembro.
+ */
 export const fetchUserActiveProjects = async () => {
-  console.log("MOCK: Obteniendo proyectos activos del usuario...");
-  await new Promise(resolve => setTimeout(resolve, 200));
-  return { success: true, data: mockActiveProjects };
+  try {
+    const userId = auth.currentUser?.uid;
+    if (!userId) return { success: false, error: "No autenticado" };
+
+    const projectsRef = collection(db, "projects");
+    // Buscamos proyectos donde el ID del usuario esté en el array de miembros
+    // Nota: Para que esto funcione, el array en Firestore debe contener solo IDs de strings 
+    // o debes ajustar la consulta si guardas objetos.
+    const q = query(projectsRef, where("miembros_ids", "array-contains", userId));
+    const querySnapshot = await getDocs(q);
+    
+    const projects = querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      name: doc.data().nombre
+    }));
+
+    return { success: true, data: projects };
+  } catch (error) {
+    console.error("Error al obtener proyectos activos:", error);
+    return { success: false, error };
+  }
 };
 
+/**
+ * Genera estadísticas globales o por proyecto en tiempo real.
+ */
 export const getDashboardStats = async (projectId = 'todos') => {
-  console.log(`MOCK: Obteniendo estadísticas del Dashboard para el proyecto: ${projectId}`);
-  
-  await new Promise(resolve => setTimeout(resolve, 500));
-  
-  // Devolvemos siempre el mismo set de datos para la demo, sin importar el filtro por ahora.
-  const mockGlobalStats = {
-    // Estadísticas personales
-    misBugsAbiertos: 4,
-    misBugsEnProgreso: 2,
-    // Resumen general de bugs
-    bugs: {
-      abiertos: 15,
-      enProgreso: 8,
-      reabiertos: 3,
-      resueltos: 52,
-      cerrados: 110,
-    },
-    // --- DATOS DE ESTADÍSTICAS ACTUALIZADOS CON DESGLOSE COMPLETO ---
-    statsPorMiembro: [
-      { id: 'user_001', nombre: 'Ana Desarrolladora', bugs: { abiertos: 5, enProgreso: 2, reabiertos: 1, resueltos: 25, cerrados: 40 } },
-      { id: 'user_002', nombre: 'Pedro Backend Dev', bugs: { abiertos: 3, enProgreso: 1, reabiertos: 0, resueltos: 15, cerrados: 30 } },
-      { id: 'user_003', nombre: 'Sofia Frontend Dev', bugs: { abiertos: 2, enProgreso: 4, reabiertos: 1, resueltos: 12, cerrados: 20 } },
-    ],
-    statsPorProyecto: [
-      { id: 'proj_001', nombre: 'Desarrollo App PrimeTrack', bugs: { abiertos: 10, enProgreso: 4, reabiertos: 1, resueltos: 30, cerrados: 55 } },
-      { id: 'proj_002', nombre: 'Campaña de Marketing Q3', bugs: { abiertos: 0, enProgreso: 0, reabiertos: 0, resueltos: 5, cerrados: 10 } },
-      { id: 'proj_003', nombre: 'Investigación de Nuevo Mercado', bugs: { abiertos: 2, enProgreso: 1, reabiertos: 1, resueltos: 8, cerrados: 15 } },
-    ]
-  };
-  
-  return { success: true, data: mockGlobalStats };
+  try {
+    const userId = auth.currentUser?.uid;
+    const bugsRef = collection(db, "bugs");
+    let q;
+
+    // 1. Filtrado de la consulta
+    if (projectId === 'todos') {
+      q = query(bugsRef);
+    } else {
+      q = query(bugsRef, where("proyecto_id", "==", projectId));
+    }
+
+    const querySnapshot = await getDocs(q);
+    const allBugs = querySnapshot.docs.map(doc => doc.data());
+
+    // 2. Procesamiento de Estadísticas (Agregación en cliente para PoC)
+    const stats = {
+      misBugsAbiertos: 0,
+      misBugsEnProgreso: 0,
+      bugs: {
+        abiertos: 0,
+        enProgreso: 0,
+        reabiertos: 0,
+        resueltos: 0,
+        cerrados: 0,
+      },
+      statsPorMiembro: {}, // Usaremos un mapa temporal
+      statsPorProyecto: {}  // Usaremos un mapa temporal
+    };
+
+    allBugs.forEach(bug => {
+      const estado = bug.estado;
+      
+      // Conteo General
+      if (estado === 'Abierto') stats.bugs.abiertos++;
+      if (estado === 'En Progreso') stats.bugs.enProgreso++;
+      if (estado === 'Reabierto') stats.bugs.reabiertos++;
+      if (estado === 'Resuelto') stats.bugs.resueltos++;
+      if (estado === 'Cerrado') stats.bugs.cerrados++;
+
+      // Estadísticas Personales
+      if (bug.asignado_a_id === userId) {
+        if (estado === 'Abierto') stats.misBugsAbiertos++;
+        if (estado === 'En Progreso') stats.misBugsEnProgreso++;
+      }
+
+      // Agregación por Miembro (Denormalizado)
+      if (bug.asignado_a_nombre) {
+        if (!stats.statsPorMiembro[bug.asignado_a_nombre]) {
+          stats.statsPorMiembro[bug.asignado_a_nombre] = { nombre: bug.asignado_a_nombre, abiertos: 0, resueltos: 0 };
+        }
+        if (estado === 'Abierto') stats.statsPorMiembro[bug.asignado_a_nombre].abiertos++;
+        if (estado === 'Resuelto') stats.statsPorMiembro[bug.asignado_a_nombre].resueltos++;
+      }
+    });
+
+    // Convertir mapas a arrays para el componente UI
+    const finalStats = {
+      ...stats,
+      statsPorMiembro: Object.values(stats.statsPorMiembro),
+      statsPorProyecto: [] // Aquí podrías hacer un mapeo similar por proyecto
+    };
+
+    return { success: true, data: finalStats };
+
+  } catch (error) {
+    console.error("Error al obtener estadísticas del Dashboard:", error);
+    return { success: false, error };
+  }
 };

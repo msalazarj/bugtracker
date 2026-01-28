@@ -1,139 +1,132 @@
 // src/layouts/NotificationsDropdown.jsx
 import React from 'react';
 import { Link } from 'react-router-dom';
-// COMENTARIO: Se añade FaBellSlash para el estado vacío.
-import { FaBell, FaComment, FaUserTag, FaCheckCircle, FaExclamationCircle, FaBellSlash } from 'react-icons/fa';
+import { 
+  FaBell, FaComment, FaUserTag, 
+  FaCheckCircle, FaExclamationCircle, FaBellSlash 
+} from 'react-icons/fa';
 
-// --- Mock Data para simular notificaciones ---
-export const mockNotifications = [
-  {
-    id: 'notif_001',
-    actor: { id: 'user_02', name: 'Juan Probador' },
-    event_type: 'ISSUE_ASSIGNMENT',
-    issue: { id: 'PRTRCK-101' },
-    project: { id: 'proyecto_mock_001' },
-    is_read: false,
-    created_at: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 'notif_002',
-    actor: { id: 'user_01', name: 'Ana Desarrolladora' },
-    event_type: 'STATUS_CHANGE',
-    issue: { id: 'PRTRCK-99' },
-    project: { id: 'proyecto_mock_001' },
-    metadata: { from: 'En Progreso', to: 'Resuelto' },
-    is_read: false,
-    created_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 'notif_003',
-    actor: { id: 'user_03', name: 'Carlos Creador' },
-    event_type: 'NEW_COMMENT',
-    issue: { id: 'MCLOUD-12' },
-    project: { id: 'proyecto_mock_002' },
-    metadata: { comment_preview: '¿Podrías revisar el último despliegue?' },
-    is_read: true,
-    created_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-  },
-];
-
-// --- Componente para un item de notificación individual ---
+/**
+ * Componente para un item de notificación individual.
+ * Optimizado para renderizar datos provenientes de Firestore.
+ */
 const NotificationItem = ({ notification, onNotificationClick }) => {
   const getNotificationDetails = () => {
-    // COMENTARIO: Se usan los colores de la paleta de diseño.
     switch (notification.event_type) {
       case 'ISSUE_ASSIGNMENT':
         return {
-          icon: <FaUserTag className="text-[#3B82F6]" />, // Azul
-          message: <><strong className="font-semibold text-gray-900">{notification.actor.name}</strong> te ha asignado el issue <strong>{notification.issue.id}</strong>.</>,
+          icon: <div className="p-2 bg-indigo-50 rounded-lg"><FaUserTag className="text-indigo-600" /></div>,
+          message: (
+            <p className="text-sm text-slate-600">
+              <span className="font-bold text-slate-900">{notification.actor_name}</span> te asignó el ticket <span className="font-bold text-indigo-600">{notification.issue_id}</span>
+            </p>
+          ),
         };
       case 'STATUS_CHANGE':
         return {
-          icon: <FaCheckCircle className="text-[#22C55E]" />, // Verde
-          message: <><strong className="font-semibold text-gray-900">{notification.actor.name}</strong> cambió el estado de <strong>{notification.issue.id}</strong> a <span className="font-semibold">{notification.metadata.to}</span>.</>,
+          icon: <div className="p-2 bg-emerald-50 rounded-lg"><FaCheckCircle className="text-emerald-600" /></div>,
+          message: (
+            <p className="text-sm text-slate-600">
+              Estado de <span className="font-bold text-slate-900">{notification.issue_id}</span> cambiado a <span className="font-bold text-emerald-600">{notification.metadata?.to}</span>
+            </p>
+          ),
         };
       case 'NEW_COMMENT':
         return {
-          icon: <FaComment className="text-gray-500" />,
-          message: <><strong className="font-semibold text-gray-900">{notification.actor.name}</strong> comentó en <strong>{notification.issue.id}</strong>: <span className="italic text-gray-700">"{notification.metadata.comment_preview}"</span></>,
+          icon: <div className="p-2 bg-slate-100 rounded-lg"><FaComment className="text-slate-500" /></div>,
+          message: (
+            <p className="text-sm text-slate-600 italic">
+              "{notification.metadata?.comment_preview}"
+            </p>
+          ),
         };
       default:
         return {
-          icon: <FaExclamationCircle className="text-red-500" />,
-          message: 'Tienes una nueva notificación.',
+          icon: <div className="p-2 bg-red-50 rounded-lg"><FaExclamationCircle className="text-red-500" /></div>,
+          message: <p className="text-sm text-slate-600">Nueva actualización en el sistema</p>,
         };
     }
   };
 
-  const formatTimeAgo = (dateString) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const seconds = Math.floor((now - date) / 1000);
-    let interval = seconds / 31536000;
-    if (interval > 1) return `hace ${Math.floor(interval)} años`;
-    interval = seconds / 2592000;
-    if (interval > 1) return `hace ${Math.floor(interval)} meses`;
-    interval = seconds / 86400;
-    if (interval > 1) return `hace ${Math.floor(interval)} días`;
-    interval = seconds / 3600;
-    if (interval > 1) return `hace ${Math.floor(interval)} horas`;
-    interval = seconds / 60;
-    if (interval > 1) return `hace ${Math.floor(interval)} minutos`;
-    return 'justo ahora';
+  const formatTimeAgo = (date) => {
+    if (!date) return '';
+    const seconds = Math.floor((new Date() - new Date(date)) / 1000);
+    if (seconds < 60) return 'justo ahora';
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `hace ${minutes}m`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `hace ${hours}h`;
+    return new Date(date).toLocaleDateString();
   };
 
   const { icon, message } = getNotificationDetails();
-  const linkTo = `/proyectos/${notification.project.id}/issues/${notification.issue.id}`;
+  const linkTo = `/proyectos/${notification.project_id}/issues/${notification.issue_id}`;
 
   return (
     <li>
-      <Link to={linkTo} onClick={onNotificationClick} className="flex items-start p-4 hover:bg-gray-100 transition-colors duration-150 border-b border-gray-100">
-        {!notification.is_read && (
-          <div className="w-2 h-2 bg-blue-500 rounded-full mr-3 mt-1.5 shrink-0" title="No leído"></div>
-        )}
-        <div className={`shrink-0 w-5 text-center ${notification.is_read ? 'ml-5' : ''}`}>{icon}</div>
-        <div className="ml-3 flex-1">
-          <p className="text-sm text-gray-800 leading-snug">{message}</p>
-          <p className="text-xs text-gray-500 mt-1">{formatTimeAgo(notification.created_at)}</p>
+      <Link 
+        to={linkTo} 
+        onClick={() => onNotificationClick(notification.id)} 
+        className={`flex items-start p-4 hover:bg-slate-50 transition-all border-b border-slate-100 ${!notification.is_read ? 'bg-indigo-50/30' : ''}`}
+      >
+        <div className="shrink-0">{icon}</div>
+        <div className="ml-4 flex-1">
+          {message}
+          <p className="text-[10px] font-bold text-slate-400 uppercase mt-1 tracking-wider">
+            {formatTimeAgo(notification.created_at)}
+          </p>
         </div>
+        {!notification.is_read && (
+          <div className="w-2 h-2 bg-indigo-500 rounded-full mt-2 shrink-0 animate-pulse"></div>
+        )}
       </Link>
     </li>
   );
 };
 
-
-// --- Componente principal del Dropdown ---
-const NotificationsDropdown = ({ notifications, onNotificationClick, onMarkAllAsRead }) => {
+const NotificationsDropdown = ({ notifications = [], onNotificationClick, onMarkAllAsRead }) => {
   return (
-    <div className="absolute top-full right-0 mt-2 w-80 sm:w-96 bg-white rounded-lg shadow-xl border border-gray-200 z-50">
-      <div className="flex justify-between items-center p-3 border-b border-gray-200">
-        <h3 className="font-semibold text-gray-800">Notificaciones</h3>
-        {/* COMENTARIO: Botón con estilo mejorado */}
-        <button onClick={onMarkAllAsRead} className="text-xs text-blue-600 hover:bg-blue-50 font-semibold rounded-md px-2 py-1 transition-colors">
-          Marcar todo como leído
-        </button>
+    <div className="absolute top-full right-0 mt-3 w-80 sm:w-96 bg-white rounded-2xl shadow-2xl border border-slate-100 z-[100] animate-scale-in overflow-hidden">
+      <div className="flex justify-between items-center p-4 bg-white border-b border-slate-50">
+        <h3 className="font-black text-slate-800 tracking-tight">Notificaciones</h3>
+        {notifications.some(n => !n.is_read) && (
+          <button 
+            onClick={onMarkAllAsRead} 
+            className="text-[11px] font-bold text-indigo-600 hover:text-indigo-700 uppercase tracking-wider"
+          >
+            Marcar lectura
+          </button>
+        )}
       </div>
-      <ul className="max-h-96 overflow-y-auto">
+
+      <ul className="max-h-[400px] overflow-y-auto custom-scrollbar">
         {notifications.length > 0 ? (
           notifications.map(notif => (
-            <NotificationItem key={notif.id} notification={notif} onNotificationClick={onNotificationClick} />
+            <NotificationItem 
+              key={notif.id} 
+              notification={notif} 
+              onNotificationClick={onNotificationClick} 
+            />
           ))
         ) : (
-          // COMENTARIO: Estado vacío mejorado con un ícono.
-          <li className="p-8 text-center text-gray-500">
+          <li className="p-12 text-center">
             <div className="flex flex-col items-center">
-              <FaBellSlash className="w-8 h-8 mb-2 text-gray-300" />
-              <p className="text-sm">No tienes notificaciones nuevas.</p>
+              <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4">
+                <FaBellSlash className="w-6 h-6 text-slate-300" />
+              </div>
+              <p className="text-sm font-bold text-slate-400">Todo al día</p>
+              <p className="text-xs text-slate-300 mt-1">No tienes avisos pendientes</p>
             </div>
           </li>
         )}
       </ul>
+
       {notifications.length > 0 && (
-         <div className="p-2 bg-gray-50 text-center border-t border-gray-200">
-            <Link to="/notificaciones" className="text-sm font-semibold text-blue-600 hover:underline p-2 block">
-              Ver todas
-            </Link>
-         </div>
+        <div className="p-3 bg-slate-50 text-center border-t border-slate-100">
+          <Link to="/notificaciones" className="text-xs font-black text-slate-500 hover:text-indigo-600 uppercase tracking-widest transition-colors">
+            Ver historial completo
+          </Link>
+        </div>
       )}
     </div>
   );

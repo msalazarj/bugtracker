@@ -1,96 +1,150 @@
 // src/services/projects.js
-import { supabase } from '../supabaseClient';
+import { db, auth } from '../firebase';
+import { 
+  collection, 
+  getDocs, 
+  getDoc, 
+  doc, 
+  addDoc, 
+  updateDoc, 
+  deleteDoc, 
+  query, 
+  orderBy, 
+  serverTimestamp 
+} from 'firebase/firestore';
 
-// --- COMENTARIO: MOCK DATA ---
-// Array de simulación que actuará como nuestra base de datos para proyectos.
-const mockProjectsData = [
-  {
-    id: 'proyecto_mock_001',
-    nombre: 'Desarrollo App PrimeTrack (Ejemplo)',
-    sigla_incidencia: 'PRTRCK',
-    descripcion: 'Este es un proyecto de ejemplo...',
-    estado: 'Activo',
-    fecha_creacion: new Date('2024-01-10T10:00:00Z').toISOString(),
-    fecha_inicio: '2024-01-14',
-    fecha_fin: '2024-06-29',
-    manager_id: 'user_uuid_manager_02',
-    creado_por: { profiles: { nombre_completo: 'Carlos Creador Ficticio' } },
-    manager: { profiles: { nombre_completo: 'Manuela Manager Asignada' } },
-    miembros: [],
-    proyectos_asociados: [{ name: 'Sub-iniciativa Q1', status: 'Activo' }]
-  },
-  {
-    id: 'proyecto_mock_002',
-    nombre: 'Migración Servidores Cloud (Ejemplo)',
-    sigla_incidencia: 'MCLOUD',
-    descripcion: 'Migración de todos los servicios on-premise a la nube de AWS.',
-    estado: 'Planeado',
-    fecha_creacion: new Date('2024-03-15T14:30:00Z').toISOString(),
-    fecha_inicio: '2024-07-01',
-    fecha_fin: '2024-12-31',
-    manager_id: 'user_uuid_manager_02',
-    creado_por: { profiles: { nombre_completo: 'Jorge Salazar' } },
-    manager: { profiles: { nombre_completo: 'Manuela Manager Asignada' } },
-    miembros: [],
-    proyectos_asociados: []
-  },
-];
+/**
+ * @file Servicio de proyectos migrado a Firebase Firestore.
+ */
 
-
-// --- FUNCIONES CRUD SIMULADAS ---
-
+/**
+ * Obtiene todos los proyectos de la base de datos.
+ */
 export const getProjects = async () => {
-    console.log("MOCK SERVICE: Obteniendo todos los proyectos.");
-    await new Promise(resolve => setTimeout(resolve, 300));
-    return { success: true, data: mockProjectsData };
+    try {
+        const projectsRef = collection(db, "projects");
+        const q = query(projectsRef, orderBy("fecha_creacion", "desc"));
+        const querySnapshot = await getDocs(q);
+        
+        const projects = querySnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        }));
+
+        return { success: true, data: projects };
+    } catch (error) {
+        console.error('Error al obtener proyectos:', error);
+        return { success: false, error: error.message };
+    }
 };
 
+/**
+ * Obtiene un proyecto específico por su ID.
+ */
 export const getProjectById = async (projectId) => {
-    console.log(`MOCK SERVICE: Buscando proyecto con ID: ${projectId}`);
-    await new Promise(resolve => setTimeout(resolve, 300));
-    const project = mockProjectsData.find(p => p.id === projectId);
-    
-    if (project) {
-        return { success: true, data: project };
+    try {
+        const docRef = doc(db, "projects", projectId);
+        const docSnap = await getDoc(docRef);
+
+        if (docSnap.exists()) {
+            return { success: true, data: { id: docSnap.id, ...docSnap.data() } };
+        } else {
+            return { success: false, error: 'Proyecto no encontrado' };
+        }
+    } catch (error) {
+        console.error('Error al obtener proyecto:', error);
+        return { success: false, error: error.message };
     }
-    return { success: false, error: 'Proyecto no encontrado' };
 };
 
+/**
+ * Crea un nuevo proyecto en Firestore.
+ */
 export const createProject = async (projectData) => {
-    console.log("MOCK SERVICE: Creando proyecto con datos:", projectData);
-    await new Promise(resolve => setTimeout(resolve, 500));
-    const newProject = {
-        id: `project_${Date.now()}`,
-        ...projectData,
-        creado_por: { profiles: { nombre_completo: "Usuario Actual (Mock)" } } // Simular el creador
-    };
-    mockProjectsData.push(newProject);
-    return { success: true, data: newProject };
-};
+    try {
+        const user = auth.currentUser;
+        const newProject = {
+            ...projectData,
+            creado_por_id: user?.uid || 'sistema',
+            creado_por_nombre: user?.displayName || 'Usuario',
+            fecha_creacion: serverTimestamp(),
+            miembros_ids: [user?.uid] // El creador es el primer miembro
+        };
 
-export const updateProject = async (projectId, updates) => {
-    console.log(`MOCK SERVICE: Actualizando proyecto ID ${projectId} con:`, updates);
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    const projectIndex = mockProjectsData.findIndex(p => p.id === projectId);
-    if (projectIndex > -1) {
-        // En una simulación, simplemente actualizamos los datos en memoria.
-        mockProjectsData[projectIndex] = { ...mockProjectsData[projectIndex], ...updates };
-        return { success: true, data: mockProjectsData[projectIndex] };
+        const docRef = await addDoc(collection(db, "projects"), newProject);
+        return { success: true, data: { id: docRef.id, ...newProject } };
+    } catch (error) {
+        console.error('Error al crear proyecto:', error);
+        return { success: false, error: error.message };
     }
-    return { success: false, error: 'Error al actualizar el proyecto (simulación).' };
 };
 
+/**
+ * Actualiza los datos de un proyecto existente.
+ */
+export const updateProject = async (projectId, updates) => {
+    try {
+        const docRef = doc(db, "projects", projectId);
+        await updateDoc(docRef, {
+            ...updates,
+            actualizado_en: serverTimestamp()
+        });
+        return { success: true };
+    } catch (error) {
+        console.error('Error al actualizar proyecto:', error);
+        return { success: false, error: error.message };
+    }
+};
+
+/**
+ * Elimina un proyecto.
+ */
 export const deleteProject = async (projectId) => {
-    console.log(`MOCK SERVICE: Eliminando proyecto ID ${projectId}`);
-    await new Promise(resolve => setTimeout(resolve, 300));
-    // En la simulación, no modificamos el array para no afectar otras pruebas.
-    return { success: true };
+    try {
+        const docRef = doc(db, "projects", projectId);
+        await deleteDoc(docRef);
+        return { success: true };
+    } catch (error) {
+        console.error('Error al eliminar proyecto:', error);
+        return { success: false, error: error.message };
+    }
 };
 
+// --- Gestión de Miembros ---
 
-// --- El resto de funciones pueden permanecer como están o ser mockeadas si es necesario ---
-export const searchUsersByEmail = async (searchQuery) => { return []; };
-export const addProjectMembers = async (projectId, members) => ({ success: true, data: [] });
-export const removeProjectMember = async (projectId, userIdToRemove) => ({ success: true });
-export const updateProjectMemberRole = async (projectId, userId, newRole) => ({ success: true });
+/**
+ * Agrega miembros a un proyecto (utilizando un array de IDs en el documento).
+ */
+export const addProjectMembers = async (projectId, membersIds) => {
+    try {
+        const docRef = doc(db, "projects", projectId);
+        const docSnap = await getDoc(docRef);
+        const currentMembers = docSnap.data().miembros_ids || [];
+        
+        // Evitar duplicados
+        const newMembersList = [...new Set([...currentMembers, ...membersIds])];
+        
+        await updateDoc(docRef, { miembros_ids: newMembersList });
+        return { success: true };
+    } catch (error) {
+        return { success: false, error: error.message };
+    }
+};
+
+/**
+ * Elimina un miembro del proyecto.
+ */
+export const removeProjectMember = async (projectId, userIdToRemove) => {
+    try {
+        const docRef = doc(db, "projects", projectId);
+        const docSnap = await getDoc(docRef);
+        const currentMembers = docSnap.data().miembros_ids || [];
+        
+        const newMembersList = currentMembers.filter(id => id !== userIdToRemove);
+        
+        await updateDoc(docRef, { miembros_ids: newMembersList });
+        return { success: true };
+    } catch (error) {
+        return { success: false, error: error.message };
+    }
+};

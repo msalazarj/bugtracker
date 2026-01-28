@@ -1,48 +1,62 @@
-// src/utils/styleHelpers.js
+/**
+ * @file styleHelpers.js
+ * @description Centraliza la lógica de estilos para badges y estados del sistema.
+ */
 
 /**
- * Devuelve clases de Tailwind para el badge de estado de un bug.
- * @param {string} estado - El estado del bug (e.g., 'Resuelto', 'Abierto').
- * @returns {string} Clases de Tailwind CSS.
+ * Clases de Tailwind para el estado de un bug.
+ * Se utilizan tonos suaves para el fondo y fuertes para el texto (Mejor accesibilidad).
  */
- export const getStatusBadgeClass = (estado) => {
+export const getStatusBadgeClass = (estado) => {
   switch (estado) {
-    case 'Resuelto': return 'bg-[#22C55E] text-white'; // Verde - Positivo
-    case 'Abierto': return 'bg-[#3B82F6] text-white'; // Azul - Informativo
-    case 'En Progreso': return 'bg-[#EAB308] text-white'; // Ámbar - En Progreso
-    case 'Reabierto': return 'bg-[#DC2626] text-white'; // Rojo - Peligro/Atención
-    case 'Cerrado': return 'bg-gray-500 text-white'; // Gris - Neutral
-    default: return 'bg-gray-400 text-white';
+    case 'Resuelto': 
+      return 'bg-green-100 text-green-700 border border-green-200';
+    case 'Abierto': 
+      return 'bg-blue-100 text-blue-700 border border-blue-200';
+    case 'En Progreso': 
+      return 'bg-amber-100 text-amber-700 border border-amber-200';
+    case 'Reabierto': 
+      return 'bg-red-100 text-red-700 border border-red-200';
+    case 'Cerrado': 
+      return 'bg-gray-100 text-gray-600 border border-gray-200';
+    default: 
+      return 'bg-gray-50 text-gray-500 border border-gray-200';
   }
 };
 
 /**
- * Devuelve clases de Tailwind para el badge de prioridad de un bug.
- * @param {string} prioridad - La prioridad del bug (e.g., 'Alta', 'Normal').
- * @returns {string} Clases de Tailwind CSS.
+ * Clases de Tailwind para la prioridad de un bug.
  */
 export const getPriorityBadgeClass = (prioridad) => {
   switch (prioridad) {
-    case 'Crítica': return 'bg-[#DC2626] text-white'; // Rojo - Peligro
-    case 'Alta': return 'bg-[#DC2626] text-white'; // Rojo - Peligro
-    case 'Normal': return 'bg-gray-500 text-white'; // Gris - Neutral (asimilado a Media)
-    case 'Baja': return 'bg-[#EAB308] text-white'; // Ámbar - Atención
-    default: return 'bg-gray-400 text-white';
+    case 'Crítica': 
+      return 'bg-red-600 text-white shadow-sm'; // Color sólido para máxima urgencia
+    case 'Alta': 
+      return 'bg-red-100 text-red-700 border border-red-200';
+    case 'Media':
+    case 'Normal': 
+      return 'bg-indigo-100 text-indigo-700 border border-indigo-200';
+    case 'Baja': 
+      return 'bg-emerald-100 text-emerald-700 border border-emerald-200';
+    default: 
+      return 'bg-gray-100 text-gray-600';
   }
 };
 
 /**
- * Devuelve clases de Tailwind para el badge de resolución de un bug.
- * @param {string} resolucion - La resolución del bug (e.g., 'Completada').
- * @returns {string} Clases de Tailwind CSS.
+ * Clases de Tailwind para la resolución final.
  */
 export const getResolutionBadgeClass = (resolucion) => {
-    switch (resolucion) {
-      case 'Completada': return 'bg-[#22C55E] text-white'; // Verde - Positivo
-      case 'No Aplica':
-      case 'Duplicada':
-      case 'Información Insuficiente':
-      case 'No se puede reproducir': return 'bg-[#EAB308] text-white'; // Ámbar - Atención
-      default: return 'bg-gray-400 text-white';
-    }
+  switch (resolucion) {
+    case 'Completada': 
+      return 'bg-green-600 text-white';
+    case 'Duplicada':
+    case 'Información Insuficiente':
+    case 'No se puede reproducir': 
+      return 'bg-orange-100 text-orange-700 border border-orange-200';
+    case 'No Aplica': 
+      return 'bg-gray-200 text-gray-700';
+    default: 
+      return 'bg-gray-100 text-gray-500';
+  }
 };

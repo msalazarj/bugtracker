@@ -1,13 +1,13 @@
-// src/pages/Projects/ProjectMembers.jsx
+// src/pages/Teams/TeamMembers.jsx
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { doc, getDoc, updateDoc, arrayUnion, arrayRemove, collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 
-const ProjectMembers = () => {
-    const { projectId } = useParams();
-    const [project, setProject] = useState(null);
+const TeamMembers = () => {
+    const { teamId } = useParams();
+    const [team, setTeam] = useState(null);
     const [members, setMembers] = useState([]);
     const [allUsers, setAllUsers] = useState([]);
     const [userToAdd, setUserToAdd] = useState('');
@@ -15,40 +15,37 @@ const ProjectMembers = () => {
     const [isOwner, setIsOwner] = useState(false);
     const { user } = useAuth();
 
-    const fetchProjectAndMembers = useCallback(async () => {
+    const fetchTeamAndMembers = useCallback(async () => {
         if (!user) return;
         setLoading(true);
         try {
-            // Cargar datos del proyecto
-            const projectRef = doc(db, "projects", projectId);
-            const projectSnap = await getDoc(projectRef);
+            const teamRef = doc(db, "teams", teamId);
+            const teamSnap = await getDoc(teamRef);
 
-            if (projectSnap.exists() && projectSnap.data().members.includes(user.uid)) {
-                const projectData = projectSnap.data();
-                setProject({ id: projectSnap.id, ...projectData });
-                setIsOwner(projectData.ownerId === user.uid);
+            if (teamSnap.exists() && teamSnap.data().members.includes(user.uid)) {
+                const teamData = teamSnap.data();
+                setTeam({ id: teamSnap.id, ...teamData });
+                setIsOwner(teamData.ownerId === user.uid);
 
-                // Cargar perfiles de los miembros
-                if (projectData.members && projectData.members.length > 0) {
-                    const membersQuery = query(collection(db, 'profiles'), where('__name__', 'in', projectData.members));
+                if (teamData.members && teamData.members.length > 0) {
+                    const membersQuery = query(collection(db, 'profiles'), where('__name__', 'in', teamData.members));
                     const membersSnap = await getDocs(membersQuery);
                     setMembers(membersSnap.docs.map(d => ({ id: d.id, ...d.data() })));
                 }
             } else {
-                setProject(null); // No tiene permisos
+                setTeam(null);
             }
         } catch (error) {
-            console.error("Error cargando miembros del proyecto:", error.message);
+            console.error("Error cargando miembros del equipo:", error.message);
         } finally {
             setLoading(false);
         }
-    }, [projectId, user]);
+    }, [teamId, user]);
 
     useEffect(() => {
-        fetchProjectAndMembers();
-    }, [fetchProjectAndMembers]);
+        fetchTeamAndMembers();
+    }, [fetchTeamAndMembers]);
 
-    // Cargar todos los usuarios para el selector (solo si es owner)
     useEffect(() => {
         if (isOwner) {
             const fetchUsers = async () => {
@@ -61,25 +58,25 @@ const ProjectMembers = () => {
 
     const handleAddMember = async () => {
         if (!userToAdd || !isOwner) return;
-        const projectRef = doc(db, "projects", projectId);
-        await updateDoc(projectRef, { members: arrayUnion(userToAdd) });
-        fetchProjectAndMembers(); // Recargar la lista
+        const teamRef = doc(db, "teams", teamId);
+        await updateDoc(teamRef, { members: arrayUnion(userToAdd) });
+        fetchTeamAndMembers();
         setUserToAdd('');
     };
 
     const handleRemoveMember = async (memberId) => {
-        if (memberId === project.ownerId || !isOwner) return; // No se puede eliminar al owner
-        const projectRef = doc(db, "projects", projectId);
-        await updateDoc(projectRef, { members: arrayRemove(memberId) });
-        fetchProjectAndMembers(); // Recargar
+        if (memberId === team.ownerId || !isOwner) return;
+        const teamRef = doc(db, "teams", teamId);
+        await updateDoc(teamRef, { members: arrayRemove(memberId) });
+        fetchTeamAndMembers();
     };
 
     if (loading) return <p>Cargando miembros...</p>;
-    if (!project) return <p>Acceso denegado.</p>;
+    if (!team) return <p>Acceso denegado.</p>;
 
     return (
         <div className="p-6">
-            <h2 className="text-xl font-bold mb-4">Miembros del Proyecto: {project.nombre}</h2>
+            <h2 className="text-xl font-bold mb-4">Miembros del Equipo: {team.nombre}</h2>
             {isOwner && (
                 <div className="flex gap-2 mb-4">
                     <select value={userToAdd} onChange={e => setUserToAdd(e.target.value)} className="border p-2 rounded-md">
@@ -95,7 +92,7 @@ const ProjectMembers = () => {
                 {members.map(member => (
                     <li key={member.id} className="flex justify-between items-center p-3 bg-white rounded-md shadow-sm">
                         <span>{member.nombre_completo}</span>
-                        {isOwner && member.id !== project.ownerId && (
+                        {isOwner && member.id !== team.ownerId && (
                             <button onClick={() => handleRemoveMember(member.id)} className="text-red-500">Eliminar</button>
                         )}
                     </li>
@@ -105,4 +102,4 @@ const ProjectMembers = () => {
     );
 };
 
-export default ProjectMembers;
+export default TeamMembers;

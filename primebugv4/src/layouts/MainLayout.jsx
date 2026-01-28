@@ -1,28 +1,39 @@
 // src/layouts/MainLayout.jsx
-
 import React from 'react';
 import { Outlet, useMatch } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 
+/**
+ * @file MainLayout.jsx
+ * @description Orquestador visual de la aplicación protegida.
+ * Maneja la persistencia de la barra lateral y superior.
+ */
 const MainLayout = () => {
-  // Usamos useMatch para ver si la ruta actual coincide con el patrón de un proyecto.
-  // Esto nos permite obtener el ID del proyecto de forma robusta.
-  const projectMatch = useMatch('/proyectos/:projectId/*'); // Se usa :projectId para consistencia
-  const projectId = projectMatch?.params.projectId; // Se extrae el 'projectId' si hay coincidencia
-
-  // COMENTARIO: El código de depuración ha sido eliminado para la versión final.
+  // Detectamos si estamos dentro de un proyecto para habilitar menús contextuales en el Sidebar
+  const projectMatch = useMatch('/proyectos/:projectId/*');
+  const projectId = projectMatch?.params.projectId;
 
   return (
-    <div className="flex h-screen bg-gray-100">
-      {/* Pasamos el projectId detectado como prop al Sidebar */}
+    <div className="flex h-screen bg-slate-50 overflow-hidden font-sans">
+      {/* Sidebar: Se mantiene fijo a la izquierda. 
+          Recibe el projectId para resaltar el proyecto activo o mostrar links de issues.
+      */}
       <Sidebar projectId={projectId} />
 
-      <div className="flex-1 flex flex-col overflow-hidden">
+      {/* Contenedor Principal: Topbar + Contenido Dinámico */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        
         <Topbar />
-        <main className="flex-1 overflow-y-auto p-6 bg-gray-50"> {/* Un fondo ligeramente diferente para el área de contenido */}
-          {/* Este Outlet es crucial. Aquí se renderizará TeamList, ProjectDetail, etc. */}
-          <Outlet /> 
+
+        <main className="flex-1 overflow-y-auto relative custom-scrollbar">
+          {/* Contenedor de contenido con padding responsivo y 
+              animación de entrada para que las páginas no aparezcan de golpe.
+          */}
+          <div className="p-4 sm:p-6 lg:p-8 animate-fade-in">
+            {/* Aquí es donde React Router inyecta las páginas (Dashboard, BugList, etc.) */}
+            <Outlet context={{ projectId }} /> 
+          </div>
         </main>
       </div>
     </div>

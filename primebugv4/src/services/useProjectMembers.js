@@ -1,100 +1,117 @@
 // src/services/useProjectMembers.js
+import { useState, useEffect } from 'react';
+import { db } from '../firebase';
+import { 
+  doc, 
+  onSnapshot, 
+  updateDoc, 
+  collection, 
+  getDocs,
+  getDoc
+} from 'firebase/firestore';
 
-import { useState, useEffect, useCallback } from 'react';
-// import { supabase } from '../supabaseClient';
-
-// --- DATOS MOCK AMPLIADOS ---
-// Lista de todos los usuarios registrados en el sistema
-const mockAllUsers = [
-    { id: 'usr_001', name: 'JSalazar', email: 'sargentocisterna@gmail.com' },
-    { id: 'usr_002', name: 'Hector Cayul', email: 'hcayul@morrisopazo.com' },
-    { id: 'usr_003', name: 'Denisse Arce', email: 'darce@morrisopazo.com' },
-    { id: 'usr_004', name: 'Ariel Martinez', email: 'amartinez@morrisopazo.com' },
-    { id: 'usr_005', name: 'Orlando San Martin', email: 'orlando.sanmartin@aguasnuevas.cl' },
-    { id: 'usr_006', name: 'Romina Cinto', email: 'romina.cinto@aguasaucania.cl' },
-    { id: 'usr_007', name: 'Carla Rojas', email: 'crojas@example.com' },
-];
-
-const mockProject = { id: 'proj_001', name: 'Mejoras SRD' };
-const initialMembers = [
-    { id: 'usr_001', name: 'JSalazar', email: 'sargentocisterna@gmail.com', role: 'Manager', join_date: '2023-09-25' },
-    { id: 'usr_002', name: 'Hector Cayul', email: 'hcayul@morrisopazo.com', role: 'Developer', join_date: '2023-10-15' },
-];
-
+/**
+ * Hook para gestionar los miembros de un proyecto en tiempo real con Firestore.
+ */
 export const useProjectMembers = (projectId) => {
     const [project, setProject] = useState(null);
     const [members, setMembers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     
-    // --- NUEVO ESTADO PARA EL DROPDOWN ---
     const [availableUsers, setAvailableUsers] = useState([]);
-    const [selectedUserId, setSelectedUserId] = useState(''); // Guarda el ID del usuario seleccionado
+    const [selectedUserId, setSelectedUserId] = useState('');
 
-    // Cargar datos iniciales
+    // 1. Escuchar el proyecto y sus miembros en tiempo real
     useEffect(() => {
-        const fetchProjectData = async () => {
-            setLoading(true);
-            try {
-                // Lógica futura con Supabase:
-                // 1. Fetch project details
-                // 2. Fetch current project members
-                // 3. Fetch ALL users
-                // 4. Filter ALL users to get available users
+        if (!projectId) return;
 
-                // --- Usando Mock Data ---
-                setProject(mockProject);
-                setMembers(initialMembers);
+        setLoading(true);
+        const projectRef = doc(db, "projects", projectId);
 
-                // Filtramos la lista completa de usuarios para obtener solo los que no son miembros
-                const memberIds = new Set(initialMembers.map(m => m.id));
-                const usersToOffer = mockAllUsers.filter(u => !memberIds.has(u.id));
-                setAvailableUsers(usersToOffer);
+        const unsubscribe = onSnapshot(projectRef, async (docSnap) => {
+            if (docSnap.exists()) {
+                const projectData = { id: docSnap.id, ...docSnap.data() };
+                setProject(projectData);
+                setMembers(projectData.miembros || []);
                 
-            } catch (err) {
-                setError(err.message);
-            } finally {
-                setLoading(false);
+                // Una vez tenemos los miembros, cargamos los usuarios disponibles
+                await fetchAvailableUsers(projectData.miembros || []);
+            } else {
+                setError("El proyecto no existe.");
             }
-        };
+            setLoading(false);
+        }, (err) => {
+            setError(err.message);
+            setLoading(false);
+        });
 
-        if (projectId) {
-            fetchProjectData();
-        }
+        return () => unsubscribe();
     }, [projectId]);
-    
-    const updateMemberRole = async (userId, newRole) => {
-        setMembers(members.map(m => m.id === userId ? { ...m, role: newRole } : m));
-    };
 
-    const removeMember = async (userId) => {
-        // Obtenemos el miembro que se va a eliminar para devolverlo a la lista de disponibles
-        const memberToRemove = members.find(m => m.id === userId);
-        if (memberToRemove) {
-            setAvailableUsers([...availableUsers, {id: memberToRemove.id, name: memberToRemove.name, email: memberToRemove.email}].sort((a, b) => a.name.localeCompare(b.name)));
+    // 2. Cargar todos los perfiles del sistema para el selector
+    const fetchAvailableUsers = async (currentMembers) => {
+        try {
+            const profilesSnap = await getDocs(collection(db, "profiles"));
+            const allUsers = profilesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+            
+            // Filtramos: usuarios que NO estén ya en el proyecto
+            const memberIds = new Set(currentMembers.map(m => m.id));
+            const filtered = allUsers.filter(u => !memberIds.has(u.id));
+            
+            setAvailableUsers(filtered);
+        } catch (err) {
+            console.error("Error cargando usuarios disponibles:", err);
         }
-        setMembers(members.filter(m => m.id !== userId));
     };
-    
-    // --- FUNCIÓN 'addMember' MODIFICADA ---
+
+    // 3. Añadir miembro (Actualización atómica en Firestore)
     const addMember = async () => {
-        // No hacer nada si no hay un usuario seleccionado
-        if (!selectedUserId) return;
+        if (!selectedUserId || !projectId) return;
 
-        // Encontrar los datos del usuario seleccionado de la lista de disponibles
-        const userToAdd = availableUsers.find(u => u.id === selectedUserId);
-        if (!userToAdd) return;
+        try {
+            const userToAdd = availableUsers.find(u => u.id === selectedUserId);
+            const newMember = {
+                id: userToAdd.id,
+                name: userToAdd.nombre_completo || userToAdd.name,
+                email: userToAdd.email,
+                role: 'Viewer',
+                join_date: new Date().toISOString().split('T')[0]
+            };
 
-        const newMember = { ...userToAdd, role: 'Viewer', join_date: new Date().toISOString().split('T')[0] };
+            const projectRef = doc(db, "projects", projectId);
+            await updateDoc(projectRef, {
+                miembros: [...members, newMember]
+            });
 
-        // Añadir a la lista de miembros
-        setMembers([...members, newMember]);
-        
-        // Eliminar de la lista de disponibles
-        setAvailableUsers(availableUsers.filter(u => u.id !== selectedUserId));
-        
-        // Resetear la selección del dropdown
-        setSelectedUserId('');
+            setSelectedUserId('');
+        } catch (err) {
+            alert("Error al añadir miembro: " + err.message);
+        }
+    };
+
+    // 4. Actualizar Rol
+    const updateMemberRole = async (userId, newRole) => {
+        try {
+            const updatedMembers = members.map(m => 
+                m.id === userId ? { ...m, role: newRole } : m
+            );
+            const projectRef = doc(db, "projects", projectId);
+            await updateDoc(projectRef, { miembros: updatedMembers });
+        } catch (err) {
+            console.error("Error al actualizar rol:", err);
+        }
+    };
+
+    // 5. Eliminar miembro
+    const removeMember = async (userId) => {
+        try {
+            const updatedMembers = members.filter(m => m.id !== userId);
+            const projectRef = doc(db, "projects", projectId);
+            await updateDoc(projectRef, { miembros: updatedMembers });
+        } catch (err) {
+            console.error("Error al eliminar miembro:", err);
+        }
     };
 
     return { 
@@ -102,10 +119,10 @@ export const useProjectMembers = (projectId) => {
         members, 
         loading, 
         error,
-        availableUsers,    //<-- Nueva data para el dropdown
-        selectedUserId,    //<-- Nuevo estado para el valor del dropdown
-        setSelectedUserId, //<-- Nueva función para actualizar el estado
-        addMember,         //<-- Lógica de añadir actualizada
+        availableUsers,
+        selectedUserId,
+        setSelectedUserId,
+        addMember,
         updateMemberRole,
         removeMember
     };

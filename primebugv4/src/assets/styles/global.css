@@ -3,20 +3,79 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Estilos personalizados adicionales si es necesario */
-body {
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-  background-color: #f0f2f5; /* Un gris claro similar al de la imagen */
+/* 1. Configuración de Variables y Base */
+@layer base {
+  :root {
+    --primary: 99 102 241;    /* Indigo 600 */
+    --secondary: 71 85 105;   /* Slate 600 */
+    --background: 248 250 252; /* Slate 50 */
+    --surface: 255 255 255;
+    --error: 220 38 38;       /* Red 600 */
+  }
+
+  body {
+    @apply antialiased text-slate-900;
+    background-color: rgb(var(--background));
+    /* Tipografía optimizada para interfaces de datos */
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
 }
 
-/* Puedes añadir más estilos para replicar el look and feel de PrimeTrack */
-.btn-primary {
-  @apply bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline;
+/* 2. Componentes Estandarizados (Design System) */
+@layer components {
+  /* Botones con sensación de elevación y feedback táctil */
+  .btn-primary {
+    @apply inline-flex items-center justify-center px-5 py-2.5 
+           bg-indigo-600 text-white font-bold rounded-xl shadow-lg 
+           shadow-indigo-100 hover:bg-indigo-700 active:scale-95 
+           transition-all duration-200 focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center px-5 py-2.5 
+           bg-white border border-slate-200 text-slate-700 font-bold rounded-xl 
+           hover:bg-slate-50 active:scale-95 transition-all duration-200;
+  }
+
+  /* Inputs estilo "Enterprise" */
+  .input-field {
+    @apply block w-full px-4 py-2.5 bg-white border border-slate-200 
+           rounded-xl text-slate-900 placeholder-slate-400
+           focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent 
+           transition-all duration-200 sm:text-sm shadow-sm;
+  }
+
+  /* Contenedores de información (Cards) */
+  .card-container {
+    @apply bg-white border border-slate-100 rounded-2xl shadow-sm p-6;
+  }
 }
 
-.input-field {
-  @apply shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline;
+/* 3. Utilidades personalizadas para Project IDX */
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  
+  /* Scrollbar minimalista para áreas de contenido */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-slate-200 rounded-full hover:bg-slate-300 transition-colors;
+  }
+}
+
+/* 4. Animaciones de transición de rutas */
+.page-transition-enter {
+  opacity: 0;
+  transform: translateY(8px);
+}
+.page-transition-enter-active {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 300ms, transform 300ms;
 }

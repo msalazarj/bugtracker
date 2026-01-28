@@ -1,13 +1,20 @@
 // src/pages/Members/MemberList.jsx
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { fetchAllUsers, inviteUser } from '../../services/users';
-// COMENTARIO: Se añaden los íconos necesarios para los nuevos estilos.
+import { 
+  collection, 
+  onSnapshot, 
+  doc, 
+  updateDoc, 
+  query, 
+  orderBy 
+} from 'firebase/firestore';
+import { db } from '../../firebase';
 import { FaPlus, FaSearch, FaTimes, FaIdCard, FaUser, FaShieldAlt } from 'react-icons/fa';
 import Tippy from '@tippyjs/react';
 import 'tippy.js/dist/tippy.css';
 
-// --- Componente InviteModal con Estilos Aplicados ---
+// --- Componente InviteModal ---
 const InviteModal = ({ isOpen, onClose, users, onInvite }) => {
     const [selectedUserId, setSelectedUserId] = useState('');
     const [selectedRole, setSelectedRole] = useState('Miembro');
@@ -16,10 +23,7 @@ const InviteModal = ({ isOpen, onClose, users, onInvite }) => {
     if (!isOpen) return null;
 
     const handleSubmit = async () => {
-        if (!selectedUserId) {
-            alert('Por favor, selecciona un usuario.');
-            return;
-        }
+        if (!selectedUserId) return;
         setIsSubmitting(true);
         await onInvite(selectedUserId, selectedRole);
         setIsSubmitting(false);
@@ -27,65 +31,66 @@ const InviteModal = ({ isOpen, onClose, users, onInvite }) => {
     };
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4">
-            <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
+        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4 backdrop-blur-sm">
+            <div className="bg-white rounded-lg shadow-2xl p-6 w-full max-w-md animate-fade-in-up">
                 <div className="flex justify-between items-center border-b pb-3 mb-6">
-                    <h3 className="text-lg font-bold text-gray-800">Invitar Nuevo Miembro</h3>
-                    <button onClick={onClose} className="text-gray-400 hover:text-gray-800 p-1 rounded-full transition-colors">
+                    <h3 className="text-lg font-bold text-gray-800">Gestionar Rol de Miembro</h3>
+                    <button onClick={onClose} className="text-gray-400 hover:text-gray-800 transition-colors">
                         <FaTimes size={20} />
                     </button>
                 </div>
                 <div className="space-y-6">
-                    {/* COMENTARIO: Se añaden íconos a los campos de selección. */}
                     <div>
-                        <label htmlFor="user-select" className="block text-sm font-medium text-gray-700 mb-1">Usuario a invitar</label>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">Seleccionar Usuario</label>
                         <div className="relative">
                             <FaUser className="absolute top-1/2 left-3 -translate-y-1/2 text-gray-400" />
                             <select
-                                id="user-select"
-                                className="input-field w-full pl-10"
+                                className="input-field w-full pl-10 border-gray-300 rounded-md focus:ring-indigo-500"
                                 value={selectedUserId}
                                 onChange={(e) => setSelectedUserId(e.target.value)}
                             >
                                 <option value="">Selecciona un usuario...</option>
                                 {users.map(user => (
                                     <option key={user.id} value={user.id}>
-                                        {user.nombre_completo} ({user.email})
+                                        {user.nombre_completo}
                                     </option>
                                 ))}
                             </select>
                         </div>
                     </div>
                     <div>
-                        <label htmlFor="role-select" className="block text-sm font-medium text-gray-700 mb-1">Asignar Rol</label>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">Asignar Rol</label>
                         <div className="relative">
                             <FaShieldAlt className="absolute top-1/2 left-3 -translate-y-1/2 text-gray-400" />
                             <select
-                                id="role-select"
-                                className="input-field w-full pl-10"
+                                className="input-field w-full pl-10 border-gray-300 rounded-md focus:ring-indigo-500"
                                 value={selectedRole}
                                 onChange={(e) => setSelectedRole(e.target.value)}
                             >
                                 <option value="Miembro">Miembro</option>
                                 <option value="Administrador">Administrador</option>
+                                <option value="Developer">Developer</option>
+                                <option value="QA">QA</option>
                             </select>
                         </div>
                     </div>
                 </div>
-                {/* COMENTARIO: Se estandarizan los botones del modal. */}
-                <div className="flex justify-end space-x-4 pt-6 mt-6 border-t">
-                    <button onClick={onClose} className="btn-secondary inline-flex items-center justify-center h-10 px-4 whitespace-nowrap hover:bg-red-600 hover:border-red-700 hover:text-white transition-colors duration-200">
-                        <FaTimes className="mr-2" /> Cancelar
+                <div className="flex justify-end space-x-3 pt-6 mt-6 border-t">
+                    <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800">
+                        Cancelar
                     </button>
-                    <button onClick={handleSubmit} className="btn-primary inline-flex items-center justify-center h-10 px-4 whitespace-nowrap" disabled={isSubmitting || !selectedUserId}>
-                        {isSubmitting ? 'Enviando...' : 'Enviar Invitación'}
+                    <button 
+                        onClick={handleSubmit} 
+                        className="bg-indigo-600 text-white px-5 py-2 rounded-md text-sm font-bold hover:bg-indigo-700 disabled:bg-indigo-300"
+                        disabled={isSubmitting || !selectedUserId}
+                    >
+                        {isSubmitting ? 'Actualizando...' : 'Confirmar Cambios'}
                     </button>
                 </div>
             </div>
         </div>
     );
 };
-
 
 const MemberList = () => {
   const [members, setMembers] = useState([]);
@@ -94,42 +99,39 @@ const MemberList = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const navigate = useNavigate();
 
+  // 1. Cargar Miembros desde Firestore en tiempo real
   useEffect(() => {
-    const loadUsers = async () => {
-      setIsLoading(true);
-      const response = await fetchAllUsers();
-      if (response.success) {
-        setMembers(response.data);
-      }
+    const q = query(collection(db, "profiles"), orderBy("nombre_completo", "asc"));
+    
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const usersData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setMembers(usersData);
       setIsLoading(false);
-    };
-    loadUsers();
+    });
+
+    return () => unsubscribe();
   }, []);
 
+  // 2. Actualizar Rol (Simulando invitación)
   const handleInvite = async (userId, role) => {
-    const response = await inviteUser(userId, role);
-    if (response.success) {
-        const invitedUser = members.find(m => m.id === userId);
-        alert(`Invitación enviada a ${invitedUser.nombre_completo} con el rol de ${role} (simulación).`);
-    } else {
-        alert('Ocurrió un error al enviar la invitación.');
+    try {
+        const userRef = doc(db, "profiles", userId);
+        await updateDoc(userRef, { rol: role });
+        // No hace falta alert, el onSnapshot actualizará la UI solo
+    } catch (error) {
+        alert('Error al actualizar el miembro: ' + error.message);
     }
   };
 
   const filteredMembers = members.filter(member =>
-    member.nombre_completo.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    member.email.toLowerCase().includes(searchQuery.toLowerCase())
+    member.nombre_completo?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    member.email?.toLowerCase().includes(searchQuery.toLowerCase())
   );
-  
-  // COMENTARIO: Se ajusta la clase del rol para seguir el patrón de diseño.
-  const getRoleClass = (role) => {
-    // Texto en negrita con fondo gris claro y bordes suavemente redondeados.
-    return 'bg-gray-200 text-gray-800 font-bold';
-  };
 
-  if (isLoading) {
-    return <div className="p-6 text-center">Cargando miembros...</div>;
-  }
+  if (isLoading) return <div className="p-10 text-center animate-pulse text-indigo-600 font-bold">Cargando directorio de miembros...</div>;
 
   return (
     <>
@@ -140,68 +142,74 @@ const MemberList = () => {
         onInvite={handleInvite}
       />
       <div className="container mx-auto p-4 sm:p-6">
-        <div className="flex flex-col sm:flex-row justify-between items-center mb-6 pb-4 border-b">
+        <div className="flex flex-col sm:flex-row justify-between items-center mb-8 pb-4 border-b">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Gestión de Miembros</h1>
-            <p className="text-sm text-gray-600">Directorio de todos los usuarios en la organización</p>
+            <h1 className="text-3xl font-extrabold text-gray-900">Equipo</h1>
+            <p className="text-gray-500">Gestiona los roles y permisos de tu organización</p>
           </div>
-          {/* COMENTARIO: Se estandariza el botón principal de la página. */}
-          <button onClick={() => setIsModalOpen(true)} className="btn-primary mt-3 sm:mt-0 inline-flex items-center justify-center h-10 px-4 whitespace-nowrap">
-            <FaPlus className="mr-2" />
-            <span>Invitar Nuevo Miembro</span>
+          <button 
+            onClick={() => setIsModalOpen(true)} 
+            className="btn-primary mt-4 sm:mt-0 flex items-center bg-indigo-600 text-white px-5 py-2.5 rounded-lg font-bold shadow-lg hover:bg-indigo-700 transition-all"
+          >
+            <FaPlus className="mr-2" /> Gestionar Roles
           </button>
         </div>
 
-        <div className="mb-6 relative">
+        <div className="mb-6 relative max-w-md">
+          <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
           <input
             type="text"
-            placeholder="Buscar miembros por nombre o email..."
-            className="input-field pl-10 w-full md:w-1/3"
+            placeholder="Buscar por nombre o email..."
+            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-full focus:ring-2 focus:ring-indigo-500 outline-none transition-all shadow-sm"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
-          <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
         </div>
 
-        <div className="bg-white shadow-lg rounded-lg overflow-hidden">
+        <div className="bg-white shadow-xl rounded-xl overflow-hidden border border-gray-100">
           <div className="overflow-x-auto">
-            <table className="min-w-full leading-normal">
+            <table className="min-w-full">
               <thead>
-                <tr>
-                  <th className="px-5 py-3 border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Nombre</th>
-                  <th className="px-5 py-3 border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Email</th>
-                  <th className="px-5 py-3 border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Rol</th>
-                  <th className="px-5 py-3 border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Fecha de Unión</th>
-                  <th className="px-5 py-3 border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Acciones</th>
+                <tr className="bg-gray-50 border-b">
+                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase">Usuario</th>
+                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase">Rol</th>
+                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase">Unido el</th>
+                  <th className="px-6 py-4 text-center text-xs font-bold text-gray-500 uppercase">Perfil</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-gray-100">
                 {filteredMembers.map(member => (
-                  <tr key={member.id} className="hover:bg-gray-50">
-                    <td className="px-5 py-4 border-b border-gray-200 bg-white text-sm">
-                      <p className="text-gray-900 font-semibold whitespace-no-wrap">{member.nombre_completo}</p>
+                  <tr key={member.id} className="hover:bg-indigo-50/30 transition-colors">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center">
+                        <div className="h-10 w-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold mr-3">
+                            {member.nombre_completo?.[0]}
+                        </div>
+                        <div>
+                            <div className="text-sm font-bold text-gray-900">{member.nombre_completo}</div>
+                            <div className="text-xs text-gray-500">{member.email}</div>
+                        </div>
+                      </div>
                     </td>
-                    <td className="px-5 py-4 border-b border-gray-200 bg-white text-sm">
-                      <p className="text-gray-600 whitespace-no-wrap">{member.email}</p>
+                    <td className="px-6 py-4">
+                      <span className={`text-[10px] uppercase tracking-wider px-2.5 py-1 rounded-full font-extrabold ${
+                          member.rol === 'Administrador' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'
+                      }`}>
+                        {member.rol || 'Miembro'}
+                      </span>
                     </td>
-                    <td className="px-5 py-4 border-b border-gray-200 bg-white text-sm">
-                        {/* COMENTARIO: Se ajusta el padding y tamaño de fuente del badge de rol. */}
-                        <span className={`text-xs px-2.5 py-1 rounded-md ${getRoleClass(member.rol)}`}>
-                            {member.rol}
-                        </span>
+                    <td className="px-6 py-4 text-sm text-gray-500">
+                      {member.createdAt ? new Date(member.createdAt).toLocaleDateString() : 'Pendiente'}
                     </td>
-                    <td className="px-5 py-4 border-b border-gray-200 bg-white text-sm">
-                        <p className="text-gray-600 whitespace-no-wrap">{member.fecha_union}</p>
-                    </td>
-                    <td className="px-5 py-4 border-b border-gray-200 bg-white text-sm">
-                        <Tippy content="Ver Perfil">
-                            <button 
-                                onClick={() => navigate('/perfil')} // Debería navegar a /perfil/member.id en un futuro
-                                className="text-gray-500 hover:text-indigo-600 p-2 rounded-full hover:bg-gray-100 transition-colors"
-                            >
-                                <FaIdCard className="h-5 w-5" />
-                            </button>
-                        </Tippy>
+                    <td className="px-6 py-4 text-center">
+                      <Tippy content="Ver detalles">
+                        <button 
+                            onClick={() => navigate(`/perfil/${member.id}`)}
+                            className="text-gray-400 hover:text-indigo-600 transition-colors p-2"
+                        >
+                          <FaIdCard size={18} />
+                        </button>
+                      </Tippy>
                     </td>
                   </tr>
                 ))}

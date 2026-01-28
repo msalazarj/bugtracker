@@ -2,129 +2,134 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext.jsx';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../firebase';
 import Tippy from '@tippyjs/react';
-// COMENTARIO: Se importan los componentes de íconos de react-icons/fa
 import {
     FaTachometerAlt, FaShieldAlt, FaUsers, FaFolderOpen, FaInfoCircle,
     FaUserFriends, FaBug, FaSignOutAlt
 } from 'react-icons/fa';
-
-// --- Mock Data y Helpers (sin cambios) ---
-const mockProjects = [
-    { id: 'proyecto_mock_001', name: 'Desarrollo App PrimeTrack (Ejemplo)' },
-    { id: 'proyecto_mock_002', name: 'Migración Cloud' },
-    { id: 'proyecto_mock_003', name: 'Investigación IA' },
-];
-
-const getProjectById = (id) => mockProjects.find(p => p.id === id);
-
 
 const Sidebar = ({ projectId }) => {  
   const { signOut, user, profile } = useAuth();
   const [currentProject, setCurrentProject] = useState(null);
   const location = useLocation();
 
+  // 1. Obtener datos del proyecto activo desde Firestore (CORREGIDO)
   useEffect(() => {
-    if (projectId) {
-      const project = getProjectById(projectId);
-      setCurrentProject(project);
-    } else {
-      setCurrentProject(null);
-    }
-  }, [projectId]);
+    const fetchProjectName = async () => {
+      // Solo ejecutar si tenemos projectId Y el usuario está cargado.
+      if (projectId && user) {
+        try {
+          const docRef = doc(db, "projects", projectId);
+          const docSnap = await getDoc(docRef);
+          if (docSnap.exists()) {
+            setCurrentProject({ id: docSnap.id, ...docSnap.data() });
+          }
+        } catch (error) {
+          console.error("Error al cargar nombre del proyecto (Sidebar):", error.message);
+        }
+      } else {
+        setCurrentProject(null);
+      }
+    };
+
+    fetchProjectName();
+  }, [projectId, user]); // <-- Dependencia de 'user' añadida para evitar race conditions
 
   const handleLogout = async () => {
-    await signOut();
+    if (window.confirm("¿Estás seguro de que deseas cerrar sesión?")) {
+      await signOut();
+    }
   };
   
   const getNavLinkClasses = ({ isActive }) => {
-    const baseClasses = "flex items-center px-3 py-2 text-sm rounded-md text-gray-300 hover:bg-gray-700 hover:text-white transition-colors duration-150";
-    const activeClasses = "bg-gray-700 text-white";
-    return `${baseClasses} ${isActive ? activeClasses : ''}`;
+    const baseClasses = "flex items-center px-4 py-3 text-sm font-bold rounded-xl transition-all duration-200 group";
+    const activeClasses = "bg-indigo-600 text-white shadow-lg shadow-indigo-100";
+    const inactiveClasses = "text-slate-400 hover:bg-slate-50 hover:text-indigo-600";
+    return `${baseClasses} ${isActive ? activeClasses : inactiveClasses}`;
   };
 
-  const getProjectSubNavLinkClasses = ({ isActive }) => {
-    const baseClasses = "flex items-center pl-3 pr-2 py-2 text-sm rounded-md text-gray-300 hover:bg-gray-700 hover:text-white transition-colors duration-150 border-l-4 border-transparent"; 
-    const activeClasses = "bg-gray-700 text-white border-l-4 border-blue-400";
-    return `${baseClasses} ${isActive ? activeClasses : ''}`;
+  const getSubLinkClasses = ({ isActive }) => {
+    const baseClasses = "flex items-center pl-11 pr-4 py-2 text-xs font-bold rounded-lg transition-all";
+    const activeClasses = "text-indigo-600 bg-indigo-50";
+    const inactiveClasses = "text-slate-400 hover:text-slate-600 hover:bg-slate-50";
+    return `${baseClasses} ${isActive ? activeClasses : inactiveClasses}`;
   };
-  
-  const isProjectsSectionActive = location.pathname.startsWith('/proyectos');
 
   return (
-    <div className="w-64 bg-gray-800 text-gray-300 flex flex-col min-h-screen">
-      <div className="p-6 text-center border-b border-gray-700">
-        <h1 className="text-2xl font-bold text-white">PrimeTrack</h1>
+    <div className="w-72 bg-white border-r border-slate-100 flex flex-col h-screen shrink-0">
+      <div className="p-8">
+        <div className="flex items-center space-x-3">
+          <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-200">
+            <FaBug className="text-white text-xl" />
+          </div>
+          <h1 className="text-xl font-black text-slate-800 tracking-tighter">PrimeTrack</h1>
+        </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
-        <div className="px-4 py-6">
-            <h2 className="px-2 mb-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">Menú</h2>
-            <nav className="space-y-1">
-                {/* COMENTARIO: Se reemplazan los <i> por componentes de react-icons */}
+      <div className="flex-1 overflow-y-auto px-4 custom-scrollbar">
+        <div className="mb-8">
+            <h2 className="px-4 mb-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Menú Principal</h2>
+            <nav className="space-y-2">
                 <NavLink to="/dashboard" className={getNavLinkClasses}>
-                    <FaTachometerAlt className="mr-3 w-5 text-center" />
+                    <FaTachometerAlt className="mr-3 text-lg" />
                     Dashboard
                 </NavLink>
                 <NavLink to="/equipos" className={getNavLinkClasses}>
-                    <FaShieldAlt className="mr-3 w-5 text-center" />
-                    Equipo
+                    <FaShieldAlt className="mr-3 text-lg" />
+                    Equipos
                 </NavLink>
                 <NavLink to="/miembros" className={getNavLinkClasses}>
-                    <FaUsers className="mr-3 w-5 text-center" />
-                    Miembros
+                    <FaUsers className="mr-3 text-lg" />
+                    Directorio
                 </NavLink>
-                <NavLink to="/proyectos" className={getNavLinkClasses({ isActive: isProjectsSectionActive })}>
-                    <FaFolderOpen className="mr-3 w-5 text-center" />
+                <NavLink to="/proyectos" className={getNavLinkClasses}>
+                    <FaFolderOpen className="mr-3 text-lg" />
                     Proyectos
                 </NavLink>
             </nav>
         </div>
 
         {currentProject && (
-          <div className="px-4 pb-6 mt-4 pt-4 border-t border-gray-700">
-            <h2 className="px-2 mb-2 text-xs font-semibold text-gray-400 uppercase tracking-wider truncate" title={currentProject.name}>
-              {currentProject.name}
+          <div className="mb-8 animate-fade-in">
+            <h2 className="px-4 mb-4 text-[10px] font-black text-slate-400 uppercase tracking-widest truncate">
+              Proyecto: {currentProject.nombre}
             </h2>
             <nav className="space-y-1">
-              <NavLink to={`/proyectos/${projectId}`} end className={getProjectSubNavLinkClasses}>
-                <FaInfoCircle className="mr-3 w-5 text-center" />
-                Detalle del Proyecto
+              <NavLink to={`/proyectos/${projectId}`} end className={getSubLinkClasses}>
+                <FaInfoCircle className="mr-2" /> Visión General
               </NavLink>
-              <NavLink to={`/proyectos/${projectId}/miembros`} className={getProjectSubNavLinkClasses}>
-                <FaUserFriends className="mr-3 w-5 text-center" />
-                Miembros
+              <NavLink to={`/proyectos/${projectId}/miembros`} className={getSubLinkClasses}>
+                <FaUserFriends className="mr-2" /> Equipo Asignado
               </NavLink>
-              <NavLink to={`/proyectos/${projectId}/issues`} className={getProjectSubNavLinkClasses}>
-                <FaBug className="mr-3 w-5 text-center" />
-                Issues
+              <NavLink to={`/proyectos/${projectId}/issues`} className={getSubLinkClasses}>
+                <FaBug className="mr-2" /> Issues / Bugs
               </NavLink>
             </nav>
           </div>
         )}
       </div>
 
-      <div className="p-4 border-t border-gray-700">
+      <div className="p-4 bg-slate-50/50 border-t border-slate-100">
         {user && (
-          <NavLink to="/perfil" className="flex items-center text-sm font-semibold text-gray-200 mb-4 hover:bg-gray-700 p-2 rounded-md">
-            <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-lg font-bold mr-3 shrink-0">
-              {profile?.avatar_url ? (
-                <img src={profile.avatar_url} alt="Avatar" className="w-full h-full rounded-full object-cover" />
-              ) : (
-                profile?.nombre_completo?.charAt(0).toUpperCase() || (user.email ? user.email.charAt(0).toUpperCase() : 'U')
-              )}
+          <div className="flex items-center p-3 mb-4 bg-white rounded-2xl shadow-sm border border-slate-100">
+            <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold shadow-inner shrink-0">
+              {profile?.nombre_completo?.charAt(0) || user.email.charAt(0).toUpperCase()}
             </div>
-            <span className="truncate">{profile?.nombre_completo || user.email}</span>
-          </NavLink>
+            <div className="ml-3 min-w-0">
+              <p className="text-sm font-bold text-slate-800 truncate">{profile?.nombre_completo || 'Usuario'}</p>
+              <p className="text-[10px] text-slate-400 truncate">{user.email}</p>
+            </div>
+          </div>
         )}
-        <Tippy content="Cerrar sesión">
-          <button
-            onClick={handleLogout}
-            className="w-full flex items-center justify-center py-2 px-4 rounded-md bg-red-600 hover:bg-red-700 text-white font-semibold transition duration-200 ease-in-out"
-          >
-            <FaSignOutAlt className="mr-2" /> Cerrar Sesión
-          </button>
-        </Tippy>
+        
+        <button
+          onClick={handleLogout}
+          className="w-full flex items-center justify-center py-3 px-4 rounded-xl bg-white border border-slate-200 text-slate-600 font-bold text-sm hover:bg-red-50 hover:text-red-600 hover:border-red-100 transition-all duration-200"
+        >
+          <FaSignOutAlt className="mr-2" /> Cerrar Sesión
+        </button>
       </div>
     </div>
   );

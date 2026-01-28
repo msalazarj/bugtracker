@@ -1,6 +1,6 @@
-// src/App.js - VERSIÓN FINAL CON RUTA DE EDICIÓN DE EQUIPO
+// src/App.js
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 
 // --- Páginas de Autenticación ---
@@ -16,36 +16,31 @@ import MainLayout from './layouts/MainLayout.jsx';
 import Dashboard from './pages/Dashboard/Dashboard.jsx';
 import ProjectsList from './pages/Projects/ProjectsList.jsx';
 import ProjectCreate from './pages/Projects/ProjectCreate.jsx';
-import ProjectDetail from './pages/Projects/ProjectDetail.jsx';
-// COMENTARIO: Se importa el nuevo componente para editar proyectos.
+import ProjectDetail from './pages/Projects/ProjectDetail.jsx'; // This will act as a layout
 import ProjectEdit from './pages/Projects/ProjectEdit.jsx';
 import ProjectMembers from './pages/Projects/ProjectMembers.jsx';
 import BugList from './pages/Bugs/BugList.jsx';
 import BugCreate from './pages/Bugs/BugCreate.jsx';
 import BugDetail from './pages/Bugs/BugDetail.jsx';
 import UserProfile from './pages/UserProfile/UserProfile.jsx';
-import TeamList from './pages/Teams/TeamList.jsx';
-import TeamCreate from './pages/Teams/TeamCreate.jsx';
-import TeamDetail from './pages/Teams/TeamDetail.jsx';
-import TeamEdit from './pages/Teams/TeamEdit.jsx';
 import MemberList from './pages/Members/MemberList.jsx';
-
-// --- Componente de ejemplo para rutas en desarrollo ---
-const PlaceholderPage = ({ title }) => (
-    <div className="p-4 bg-white rounded-lg shadow-md">
-        <h1 className="text-2xl font-bold">{title}</h1>
-        <p>Esta es una página de ejemplo. El contenido se construirá en una etapa posterior.</p>
-    </div>
-);
 
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
+  
   if (loading) {
-    return <div className="flex items-center justify-center min-h-screen text-xl">Cargando...</div>;
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-slate-50">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mb-4"></div>
+        <p className="text-slate-500 font-bold text-xs uppercase tracking-widest">Validando sesión segura...</p>
+      </div>
+    );
   }
+  
   if (!user) {
     return <Navigate to="/login" replace />;
   }
+  
   return children;
 };
 
@@ -60,7 +55,7 @@ function App() {
           <Route path="/recuperar-clave" element={<ForgotPassword />} />
           <Route path="/actualizar-clave" element={<UpdatePassword />} />
 
-          {/* --- RUTAS PROTEGIDAS Y ANIDADAS --- */}
+          {/* --- RUTAS PROTEGIDAS (Envueltas en ProtectedRoute y MainLayout) --- */}
           <Route
             path="/"
             element={
@@ -71,49 +66,31 @@ function App() {
           >
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="dashboard" element={<Dashboard />} />
-            
-            {/* --- Rutas de Equipos --- */}
-            <Route path="equipos" element={<TeamList />} />
-            <Route path="equipos/crear" element={<TeamCreate />} />
-            {/* COMENTARIO: Se añade la nueva ruta para editar equipos. */}
-            <Route path="equipos/editar/:id" element={<TeamEdit />} />
-            <Route path="equipos/:id" element={<TeamDetail />} />
-            <Route path="equipos/:id/miembros" element={<PlaceholderPage title="Gestionar Miembros del Equipo" />} />
-            
+            <Route path="perfil" element={<UserProfile />} />
             <Route path="miembros" element={<MemberList />} />
 
-            {/* --- Rutas de Proyectos y Bugs anidadas --- */}
+            {/* Gestión de Proyectos */}
             <Route path="proyectos" element={<ProjectsList />} />
             <Route path="proyectos/crear" element={<ProjectCreate />} />
-            {/* COMENTARIO: Se añade la nueva ruta para editar proyectos. */}
             <Route path="proyectos/editar/:projectId" element={<ProjectEdit />} />
-            {/* Renombrado :id a :projectId por claridad */}
-            <Route path="proyectos/:projectId" element={<ProjectDetail />} />
-            <Route path="proyectos/:projectId/miembros" element={<ProjectMembers />} />
             
-            {/* Rutas de Issues (Bugs) anidadas */}
-            <Route path="proyectos/:projectId/issues" element={<BugList />} />
+            {/* --- ANIDAMIENTO DE RUTAS DEL PROYECTO --- */}
+            {/* ProjectDetail ahora actúa como un Layout para sus rutas hijas */}
+            <Route path="proyectos/:projectId" element={<ProjectDetail />}>
+              {/* La ruta 'index' se renderiza por defecto dentro del Outlet de ProjectDetail */}
+              {/* Por ahora apunta a la lista de issues, que es lo más común */}
+              <Route index element={<Navigate to="issues" replace />} />
+              <Route path="issues" element={<BugList />} />
+              <Route path="miembros" element={<ProjectMembers />} />
+            </Route>
+            
+            {/* Gestión de Issues (Bugs) - Estas son páginas completas, no anidadas */}
             <Route path="proyectos/:projectId/issues/crear" element={<BugCreate />} />
             <Route path="proyectos/:projectId/issues/editar/:bugId" element={<BugCreate />} />
             <Route path="proyectos/:projectId/issues/:bugId" element={<BugDetail />} />
-            
-            {/* --- COMENTARIO: Las siguientes rutas de bugs de nivel superior son incorrectas y se eliminan --- */}
-            {/* <Route path="bugs" element={<BugList />} />
-            <Route path="bugs/crear" element={<BugCreate />} />
-            <Route path="bugs/:id" element={<BugDetail />} />
-            <Route path="bugs/editar/:id" element={<BugCreate />} />
-            */}
-
-            <Route path="perfil" element={<UserProfile />} />
           </Route>
 
-          {/* --- RUTA COMODÍN (Catch-all) --- */}
-          <Route 
-            path="*" 
-            element={
-                <Navigate to="/dashboard" replace />
-            } 
-          />
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </AuthProvider>
     </Router>

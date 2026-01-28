@@ -2,12 +2,12 @@
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { updatePassword } from '../../services/auth';
-import { supabase } from '../../supabaseClient'; // Para verificar la sesión después del reset
+import { useAuth } from '../../contexts/AuthContext'; // Usamos el contexto en lugar del servicio directo
 
 /**
- * @file Componente para actualizar la contraseña después de un reset.
- * @module pages/Auth/UpdatePassword
+ * @file Componente para actualizar la contraseña.
+ * En Firebase, el usuario debe tener una sesión activa (generada por el link de reset)
+ * para poder ejecutar esta acción.
  */
 
 const UpdatePassword = () => {
@@ -16,104 +16,119 @@ const UpdatePassword = () => {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
+  
+  const { updatePassword, user } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Supabase maneja la sesión después de un reset, verifica que el usuario esté autenticado.
-    const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        // Si no hay sesión (ej. el link de reset expiró o ya fue usado), redirigir
-        setError('Sesión de restablecimiento de clave inválida o expirada. Por favor, intenta de nuevo.');
-        setTimeout(() => navigate('/login'), 3000);
-      }
-    };
-    checkSession();
-  }, [navigate]);
+    // Verificamos si hay un usuario en el contexto. 
+    // Firebase Auth persiste la sesión del link de recuperación automáticamente.
+    if (!loading && !user) {
+      setError('Sesión inválida o expirada. Por favor, solicita un nuevo enlace de recuperación.');
+      const timer = setTimeout(() => navigate('/login'), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [user, loading, navigate]);
 
-  /**
-   * Maneja el envío del formulario de actualización de contraseña.
-   * @param {Event} e - Evento del formulario.
-   */
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
     setSuccess(false);
 
+    // Validaciones de UI
     if (newPassword !== confirmNewPassword) {
       setError('Las contraseñas no coinciden.');
       return;
     }
 
-    if (newPassword.length < 6) {
-      setError('La nueva contraseña debe tener al menos 6 caracteres.');
+    if (newPassword.length < 8) { // Firebase recomienda al menos 8 por seguridad
+      setError('La nueva contraseña debe tener al menos 8 caracteres.');
       return;
     }
 
     setLoading(true);
-    const { data, error: updateError } = await updatePassword(newPassword);
-
-    if (updateError) {
-      setError(`Error al actualizar la contraseña: ${updateError.message}`);
-      console.error('Update password error:', updateError.message);
-    } else {
+    try {
+      await updatePassword(newPassword);
       setSuccess(true);
       setTimeout(() => {
-        navigate('/dashboard'); // Redirige al dashboard después de actualizar
+        navigate('/dashboard'); 
       }, 3000);
+    } catch (updateError) {
+      console.error('Update password error:', updateError.code);
+      
+      // UX: Manejo de error por sesión expirada o re-autenticación necesaria
+      if (updateError.code === 'auth/requires-recent-login') {
+        setError('Por seguridad, esta operación requiere un inicio de sesión reciente. Intenta solicitar el enlace de nuevo.');
+      } else {
+        setError(`Error: ${updateError.message}`);
+      }
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-100">
+    <div className="flex items-center justify-center min-h-screen bg-gray-100 px-4">
       <div className="bg-white p-8 rounded-lg shadow-lg w-full max-w-md">
-        <h2 className="text-2xl font-bold text-center mb-6">Actualizar Contraseña</h2>
-        <form onSubmit={handleSubmit}>
-          {error && <p className="text-red-500 text-center mb-4">{error}</p>}
+        <div className="text-center mb-6">
+          <h2 className="text-2xl font-bold text-gray-900">Actualizar Contraseña</h2>
+          <p className="text-sm text-gray-600 mt-1">Ingresa tu nueva clave de acceso</p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded text-sm text-center">
+              {error}
+            </div>
+          )}
+          
           {success && (
-            <p className="text-green-500 text-center mb-4">
-              Tu contraseña ha sido actualizada exitosamente. Redirigiendo al Dashboard...
-            </p>
+            <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded text-sm text-center">
+              Tu contraseña ha sido actualizada exitosamente. Redirigiendo...
+            </div>
           )}
 
-          <div className="mb-4">
-            <label htmlFor="newPassword" className="block text-gray-700 text-sm font-bold mb-2">
+          <div>
+            <label htmlFor="newPassword" className="block text-gray-700 text-sm font-semibold mb-1">
               Nueva Contraseña
             </label>
             <input
               type="password"
               id="newPassword"
-              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-              placeholder="Mínimo 6 caracteres"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              placeholder="Mínimo 8 caracteres"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
               required
-              minLength={6}
             />
           </div>
-          <div className="mb-6">
-            <label htmlFor="confirmNewPassword" className="block text-gray-700 text-sm font-bold mb-2">
+
+          <div>
+            <label htmlFor="confirmNewPassword" className="block text-gray-700 text-sm font-semibold mb-1">
               Confirmar Nueva Contraseña
             </label>
             <input
               type="password"
               id="confirmNewPassword"
-              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 mb-3 leading-tight focus:outline-none focus:shadow-outline"
-              placeholder="Repite la nueva contraseña"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              placeholder="Repite la contraseña"
               value={confirmNewPassword}
               onChange={(e) => setConfirmNewPassword(e.target.value)}
               required
-              minLength={6}
             />
           </div>
-          <div className="flex items-center justify-center">
+
+          <div className="pt-2">
             <button
               type="submit"
-              className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
-              disabled={loading}
+              className={`w-full font-bold py-2 px-4 rounded-md transition-colors ${
+                loading || success 
+                  ? 'bg-blue-300 cursor-not-allowed' 
+                  : 'bg-blue-600 hover:bg-blue-700 text-white shadow-md'
+              }`}
+              disabled={loading || success}
             >
-              {loading ? 'Actualizando...' : 'Actualizar Contraseña'}
+              {loading ? 'Procesando...' : 'Actualizar Contraseña'}
             </button>
           </div>
         </form>

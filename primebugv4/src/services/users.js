@@ -1,46 +1,104 @@
 // src/services/users.js
+import { db, auth } from '../firebase';
+import { 
+  collection, 
+  getDocs, 
+  getDoc, 
+  doc, 
+  updateDoc, 
+  query, 
+  orderBy 
+} from 'firebase/firestore';
 
-// Propósito: Simular un servicio de datos para la entidad "Usuarios".
+/**
+ * @file Servicio de usuarios migrado a Firebase Firestore.
+ * @description Centraliza la gestión de perfiles y roles de la organización.
+ */
 
-export const mockAllSystemUsers = [
-  { id: 'user_001', nombre_completo: 'Ana Desarrolladora', email: 'ana.dev@example.com', fecha_union: '2024-01-15', rol: 'Administrador', avatar_url: 'https://i.pravatar.cc/150?u=user_001' },
-  { id: 'user_002', nombre_completo: 'Pedro Backend Dev', email: 'pedro.backend@example.com', fecha_union: '2024-01-20', rol: 'Miembro', avatar_url: 'https://i.pravatar.cc/150?u=user_002' },
-  { id: 'user_003', nombre_completo: 'Sofia Frontend Dev', email: 'sofia.frontend@example.com', fecha_union: '2024-02-01', rol: 'Miembro', avatar_url: 'https://i.pravatar.cc/150?u=user_003' },
-  { id: 'user_004', nombre_completo: 'Juan Probador', email: 'juan.tester@example.com', fecha_union: '2024-02-05', rol: 'Miembro', avatar_url: 'https://i.pravatar.cc/150?u=user_004' },
-  { id: 'user_005', nombre_completo: 'Laura Diseñadora UX', email: 'laura.ux@example.com', fecha_union: '2024-02-10', rol: 'Miembro', avatar_url: 'https://i.pravatar.cc/150?u=user_005' },
-  { id: 'user_006', nombre_completo: 'Carlos Creador Ficticio', email: 'carlos.creador@example.com', fecha_union: '2024-03-01', rol: 'Administrador', avatar_url: null },
-  { id: 'user_007', nombre_completo: 'Jorge Salazar', email: 'jorge.salazar@aguasnuevas.cl', fecha_union: '2023-12-01', rol: 'Administrador', avatar_url: null },
-];
-
+/**
+ * Obtiene todos los usuarios registrados en la base de datos de perfiles.
+ */
 export const fetchAllUsers = async () => {
-  console.log("MOCK: Obteniendo todos los usuarios del sistema.");
-  await new Promise(resolve => setTimeout(resolve, 300));
-  return { success: true, data: mockAllSystemUsers };
+  try {
+    const profilesRef = collection(db, "profiles");
+    // Ordenamos por fecha de unión para ver los más recientes primero
+    const q = query(profilesRef, orderBy("fecha_union", "desc"));
+    const querySnapshot = await getDocs(q);
+    
+    const users = querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+
+    return { success: true, data: users };
+  } catch (error) {
+    console.error("Error al obtener usuarios en Firebase:", error);
+    return { success: false, error: error.message };
+  }
 };
 
+/**
+ * Actualiza el rol de un usuario (Simula el proceso de invitación/asignación).
+ */
 export const inviteUser = async (userId, role) => {
-  const user = mockAllSystemUsers.find(u => u.id === userId);
-  console.log(`MOCK: Invitando a ${user.nombre_completo} con el rol de ${role}.`);
-  await new Promise(resolve => setTimeout(resolve, 500));
-  console.log("MOCK: Invitación enviada exitosamente.");
-  return { success: true };
+  try {
+    const userRef = doc(db, "profiles", userId);
+    await updateDoc(userRef, { 
+      rol: role,
+      actualizado_en: new Date().toISOString()
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error("Error al asignar rol:", error);
+    return { success: false, error: error.message };
+  }
 };
 
-// --- NUEVA FUNCIÓN PARA OBTENER EL PERFIL DEL USUARIO LOGUEADO ---
+/**
+ * Obtiene el perfil del usuario actualmente autenticado desde Firestore.
+ */
 export const getCurrentUserProfile = async () => {
-    console.log("MOCK: Obteniendo perfil del usuario actual.");
-    await new Promise(resolve => setTimeout(resolve, 300));
-    // Devolvemos el perfil de 'Jorge Salazar' como ejemplo del usuario logueado
-    const userProfile = mockAllSystemUsers.find(u => u.id === 'user_007');
-    return { success: true, data: userProfile };
+  try {
+    const user = auth.currentUser;
+    if (!user) return { success: false, error: "No hay sesión activa" };
+
+    const docRef = doc(db, "profiles", user.uid);
+    const docSnap = await getDoc(docRef);
+
+    if (docSnap.exists()) {
+      return { success: true, data: { id: docSnap.id, ...docSnap.data() } };
+    } else {
+      return { success: false, error: "No se encontró el perfil en la base de datos" };
+    }
+  } catch (error) {
+    console.error("Error al obtener perfil actual:", error);
+    return { success: false, error: error.message };
+  }
 };
 
-// --- NUEVA FUNCIÓN PARA ACTUALIZAR EL PERFIL DEL USUARIO ---
+/**
+ * Actualiza los metadatos del perfil del usuario (nombre, avatar, etc.)
+ */
 export const updateUserProfile = async (profileData) => {
-    console.log("MOCK: Actualizando perfil con los siguientes datos:", profileData);
-    await new Promise(resolve => setTimeout(resolve, 600));
-    // En una app real, aquí se haría la llamada a Supabase para actualizar
-    // y subir la imagen si es necesario.
-    console.log("MOCK: Perfil actualizado exitosamente.");
-    return { success: true, data: profileData };
+  try {
+    const user = auth.currentUser;
+    if (!user) throw new Error("Usuario no autenticado");
+
+    const docRef = doc(db, "profiles", user.uid);
+    
+    // Filtramos los datos para evitar sobreescribir campos sensibles como el email o ID
+    const updates = {
+      nombre_completo: profileData.nombre_completo,
+      avatar_url: profileData.avatar_url || null,
+      actualizado_en: new Date().toISOString()
+    };
+
+    await updateDoc(docRef, updates);
+
+    return { success: true, data: updates };
+  } catch (error) {
+    console.error("Error al actualizar perfil:", error);
+    return { success: false, error: error.message };
+  }
 };

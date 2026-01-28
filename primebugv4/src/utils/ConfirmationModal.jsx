@@ -1,34 +1,71 @@
 // src/utils/ConfirmationModal.jsx
+import React, { useEffect } from 'react';
 
-// Propósito: Un modal de confirmación genérico y reutilizable.
-// Ubicado en 'utils' según la estructura del proyecto.
+/**
+ * @file Modal de confirmación genérico.
+ * @description Proporciona una capa de seguridad para acciones destructivas o críticas.
+ */
 
-import React from 'react';
+const ConfirmationModal = ({ 
+    isOpen, 
+    title, 
+    message, 
+    onConfirm, 
+    onCancel, 
+    confirmText = 'Confirmar', 
+    cancelText = 'Cancelar' 
+}) => {
+    
+    // Bloquear el scroll del body cuando el modal está abierto
+    useEffect(() => {
+        if (isOpen) {
+            document.body.style.overflow = 'hidden';
+        } else {
+            document.body.style.overflow = 'unset';
+        }
+        return () => { document.body.style.overflow = 'unset'; };
+    }, [isOpen]);
 
-const ConfirmationModal = ({ isOpen, title, message, onConfirm, onCancel, confirmText = 'Confirmar', cancelText = 'Cancelar' }) => {
     if (!isOpen) return null;
 
     return (
         <div 
-            className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center"
-            onClick={onCancel}
+            className="fixed inset-0 z-[100] flex justify-center items-center p-4 animate-fade-in"
+            role="dialog"
+            aria-modal="true"
         >
+            {/* Backdrop con desenfoque (Blur) */}
             <div 
-                className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md mx-4"
+                className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm transition-opacity" 
+                onClick={onCancel}
+            />
+
+            {/* Contenedor del Modal */}
+            <div 
+                className="relative bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md transform transition-all animate-scale-in border border-gray-100"
                 onClick={(e) => e.stopPropagation()}
             >
-                <h3 className="text-xl font-semibold text-gray-800 mb-4">{title}</h3>
-                <p className="text-gray-600 mb-6">{message}</p>
-                <div className="flex justify-end space-x-4">
+                {/* Título con jerarquía clara */}
+                <h3 className="text-xl font-black text-gray-900 mb-3 tracking-tight">
+                    {title}
+                </h3>
+                
+                {/* Mensaje descriptivo */}
+                <p className="text-gray-500 text-sm leading-relaxed mb-8">
+                    {message}
+                </p>
+
+                {/* Acciones */}
+                <div className="flex flex-col sm:flex-row justify-end gap-3">
                     <button 
                         onClick={onCancel}
-                        className="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 transition-colors"
+                        className="px-6 py-2.5 text-sm font-bold text-gray-500 hover:bg-gray-100 rounded-xl transition-all order-2 sm:order-1"
                     >
                         {cancelText}
                     </button>
                     <button 
                         onClick={onConfirm}
-                        className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
+                        className="px-6 py-2.5 text-sm font-black text-white bg-red-600 hover:bg-red-700 rounded-xl shadow-lg shadow-red-200 transition-all order-1 sm:order-2"
                     >
                         {confirmText}
                     </button>

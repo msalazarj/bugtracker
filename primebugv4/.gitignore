@@ -1,0 +1,23 @@
+# Dependencias
+node_modules/
+dist/
+build/
+
+# Seguridad y Variables de Entorno (CRUCIAL)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Firebase y logs
+.firebase/
+firebase-debug.log*
+firestore-debug.log*
+ui-debug.log*
+
+# IDEs y Editores
+.vscode/
+.idx/
+.idea/
+.DS_Store
