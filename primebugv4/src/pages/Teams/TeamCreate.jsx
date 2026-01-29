@@ -1,7 +1,7 @@
 // src/pages/Teams/TeamCreate.jsx
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { FaUsers, FaArrowLeft } from 'react-icons/fa';
@@ -10,7 +10,7 @@ const TeamCreate = () => {
     const [nombre, setNombre] = useState('');
     const [error, setError] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const { user, profile } = useAuth();
+    const { user } = useAuth(); // Se elimina la dependencia directa de `profile`
     const navigate = useNavigate();
 
     const handleSubmit = async (e) => {
@@ -19,7 +19,7 @@ const TeamCreate = () => {
             setError('El nombre del equipo es obligatorio.');
             return;
         }
-        if (!user || !profile) {
+        if (!user) {
             setError("Debes estar autenticado para crear un equipo.");
             return;
         }
@@ -28,18 +28,24 @@ const TeamCreate = () => {
         setError('');
 
         try {
-            // ESTRUCTURA DE DATOS CORREGIDA
+            // Obtener el perfil del usuario directamente para asegurar datos frescos
+            const profileRef = doc(db, 'profiles', user.uid);
+            const profileSnap = await getDoc(profileRef);
+
+            if (!profileSnap.exists()) {
+                throw new Error("No se pudo encontrar el perfil del usuario.");
+            }
+            const userProfile = profileSnap.data();
+
             const teamData = {
                 nombre: nombre.trim(),
                 ownerId: user.uid,
                 createdAt: serverTimestamp(),
-                // Array de miembros para consultas de acceso rápido (array-contains)
-                members: [user.uid],
-                // Mapa de roles para gestión de permisos detallada
+                members: [user.uid], // Requerido por la regla de seguridad
                 members_roles: {
                     [user.uid]: {
                         role: 'Owner',
-                        displayName: profile.nombre_completo,
+                        displayName: userProfile.nombre_completo, // Dato obtenido al momento
                         email: user.email
                     }
                 }
@@ -50,7 +56,7 @@ const TeamCreate = () => {
 
         } catch (err) {
             console.error("Error al crear el equipo:", err);
-            setError('No se pudo crear el equipo. Inténtalo de nuevo.');
+            setError('No se pudo crear el equipo. Revisa las reglas de seguridad y la conexión.');
         } finally {
             setIsSubmitting(false);
         }

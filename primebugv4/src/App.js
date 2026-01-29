@@ -24,6 +24,10 @@ import BugCreate from './pages/Bugs/BugCreate.jsx';
 import BugDetail from './pages/Bugs/BugDetail.jsx';
 import UserProfile from './pages/UserProfile/UserProfile.jsx';
 import MemberList from './pages/Members/MemberList.jsx';
+import TeamList from './pages/Teams/TeamList.jsx';
+import TeamCreate from './pages/Teams/TeamCreate.jsx';
+import TeamDetail from './pages/Teams/TeamDetail.jsx';
+import TeamMembers from './pages/Teams/TeamMembers.jsx';
 
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
@@ -67,11 +71,14 @@ function App() {
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="perfil" element={<UserProfile />} />
-
-            {/* --- REPARACIÓN: Rutas añadidas para coincidir con el Sidebar --- */}
             <Route path="bugs" element={<BugList />} />
-            <Route path="equipos" element={<MemberList />} />
             
+            {/* Gestión de Equipos */}
+            <Route path="equipos" element={<TeamList />} />
+            <Route path="equipos/crear" element={<TeamCreate />} />
+            <Route path="equipos/:teamId" element={<TeamDetail />} />
+            <Route path="equipos/:teamId/miembros" element={<TeamMembers />} />
+
             {/* Gestión de Proyectos */}
             <Route path="proyectos" element={<ProjectsList />} />
             <Route path="proyectos/crear" element={<ProjectCreate />} />

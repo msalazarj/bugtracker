@@ -3,7 +3,33 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../firebase';
-import { FaUsers, FaArrowLeft, FaCogs } from 'react-icons/fa';
+import { FaUsers, FaArrowLeft, FaCogs, FaProjectDiagram } from 'react-icons/fa';
+
+// --- Sub-componente para las Tarjetas de Acción ---
+const ActionCard = ({ to, icon, title, description, disabled = false }) => {
+    const baseClasses = "block bg-white p-6 rounded-2xl shadow-sm border border-slate-100 transition-all duration-300";
+    const enabledClasses = "hover:shadow-lg hover:-translate-y-1 hover:border-indigo-200";
+    const disabledClasses = "opacity-50 cursor-not-allowed bg-slate-50";
+
+    const content = (
+        <div className="flex items-start gap-5">
+            <div className="flex-shrink-0 w-12 h-12 bg-indigo-100 text-indigo-600 rounded-lg flex items-center justify-center">
+                {icon}
+            </div>
+            <div>
+                <h3 className="font-bold text-lg text-slate-800">{title}</h3>
+                <p className="text-sm text-slate-500 mt-1">{description}</p>
+            </div>
+        </div>
+    );
+
+    if (disabled) {
+        return <div className={`${baseClasses} ${disabledClasses}`}>{content}</div>;
+    }
+
+    return <Link to={to} className={`${baseClasses} ${enabledClasses}`}>{content}</Link>;
+};
+
 
 const TeamDetail = () => {
     const { teamId } = useParams();
@@ -35,29 +61,40 @@ const TeamDetail = () => {
 
     return (
         <div className="max-w-5xl mx-auto space-y-8">
-            <div className="mb-6">
-                 <Link to="/equipos" className="flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-indigo-600 transition-colors">
+            {/* --- Encabezado -- */}
+            <div className="space-y-4">
+                <Link to="/equipos" className="flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-indigo-600 transition-colors w-fit">
                     <FaArrowLeft />
                     Volver a la lista de Equipos
                 </Link>
-            </div>
-
-            <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 flex flex-col sm:flex-row items-start justify-between gap-6">
-                <div>
-                    <h1 className="text-3xl font-bold text-slate-800">{team.nombre}</h1>
-                    <p className="text-slate-500 mt-2">Este es el panel principal de tu equipo. Desde aquí puedes acceder a las diferentes secciones.</p>
-                </div>
-                <div className="flex-shrink-0">
-                    <Link to={`/equipos/${teamId}/miembros`} className="btn-secondary inline-flex items-center gap-2 px-4 py-2">
-                        <FaCogs/> Gestionar Miembros
-                    </Link>
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                    <h1 className="text-3xl font-bold text-slate-800">Panel del Equipo: {team.nombre}</h1>
+                    <p className="text-slate-500 mt-2">Este es el centro de control para tu equipo. Desde aquí puedes acceder a todas las funcionalidades clave.</p>
                 </div>
             </div>
 
-            {/* Placeholder for future content */}
-            <div className="text-center bg-white p-12 rounded-2xl shadow-sm border border-slate-100">
-                <h3 className="text-lg font-bold text-slate-700">Próximamente</h3>
-                <p className="text-slate-500 mt-2">Más funcionalidades para la gestión de tu equipo aparecerán aquí.</p>
+            {/* --- Cuadrícula de Tarjetas de Acción -- */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <ActionCard 
+                    to={`/equipos/${teamId}/miembros`}
+                    icon={<FaUsers size={24} />}
+                    title="Gestionar Miembros"
+                    description={`Añade o elimina miembros. Actualmente hay ${team.members?.length || 0} personas.`}
+                />
+                <ActionCard 
+                    to={`#`}
+                    icon={<FaProjectDiagram size={24} />}
+                    title="Proyectos del Equipo"
+                    description="Visualiza y gestiona todos los proyectos asignados a este equipo."
+                    disabled={true} 
+                />
+                <ActionCard 
+                    to={`#`}
+                    icon={<FaCogs size={24} />}
+                    title="Configuración del Equipo"
+                    description="Edita el nombre, la descripción y otras propiedades del equipo."
+                    disabled={true} 
+                />
             </div>
         </div>
     );

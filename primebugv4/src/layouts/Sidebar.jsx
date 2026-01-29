@@ -29,16 +29,14 @@ const SidebarSeparator = ({ isSidebarOpen }) => (
 );
 
 const Sidebar = ({ isSidebarOpen }) => {
-    const { user, profile, signOut } = useAuth();
+    const { user, profile, signOut } = useAuth(); // `signOut` puede no estar en el contexto base
     const navigate = useNavigate();
     
-    // Hook para detectar si estamos dentro de un proyecto
     const projectMatch = useMatch('/proyectos/:projectId/*');
     const projectId = projectMatch?.params.projectId;
 
     const [projectName, setProjectName] = useState('');
 
-    // Cargar el nombre del proyecto actual si existe
     useEffect(() => {
         if (!projectId) {
             setProjectName('');
@@ -55,14 +53,16 @@ const Sidebar = ({ isSidebarOpen }) => {
     }, [projectId]);
 
     const handleSignOut = async () => {
-        await signOut();
+        // Esta función puede fallar si `signOut` no está definido en el contexto
+        if (typeof signOut === 'function') {
+            await signOut();
+        }
         navigate('/login');
     }
 
     return (
         <aside className={`fixed top-0 left-0 h-full bg-slate-900 text-white transition-all duration-300 z-30 ${isSidebarOpen ? 'w-64' : 'w-20'}`}>
             <div className="flex flex-col h-full">
-                {/* Logo de PrimeBug */}
                 <div className={`flex items-center h-20 border-b border-slate-700 ${isSidebarOpen ? 'px-6' : 'px-4 justify-center'}`}>
                     <Link to="/" className="flex items-center gap-3">
                         <FaBug className="text-indigo-400 text-3xl flex-shrink-0" />
@@ -71,23 +71,17 @@ const Sidebar = ({ isSidebarOpen }) => {
                 </div>
 
                 <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
-                    {/* --- NAVEGACIÓN PRINCIPAL --- */}
                     <NavItem to="/" icon={<FaTachometerAlt className="text-lg" />} isSidebarOpen={isSidebarOpen}>Dashboard</NavItem>
-                    
                     <SidebarSeparator isSidebarOpen={isSidebarOpen} />
-
                     <NavItem to="/equipos" icon={<FaUsers className="text-lg" />} isSidebarOpen={isSidebarOpen}>Equipos</NavItem>
                     <NavItem to="/miembros" icon={<FaUserFriends className="text-lg" />} isSidebarOpen={isSidebarOpen}>Miembros</NavItem>
                     <NavItem to="/proyectos" icon={<FaProjectDiagram className="text-lg" />} isSidebarOpen={isSidebarOpen} end={false}>Proyectos</NavItem>
 
-                    {/* --- NAVEGACIÓN CONTEXTUAL DE PROYECTO --- */}
                     {projectId && (
                         <>
                             <SidebarSeparator isSidebarOpen={isSidebarOpen} />
-                            
                             {isSidebarOpen && <span className="px-6 text-xs font-bold text-slate-500 uppercase tracking-wider">Proyecto</span>}
                             {isSidebarOpen && <p className="px-6 pt-2 pb-1 text-base font-semibold text-white truncate">{projectName || 'Cargando...'}</p>}
-                            
                             <NavItem to={`/proyectos/${projectId}`} icon={<FaFolder className="text-lg" />} isSidebarOpen={isSidebarOpen}>Detalles</NavItem>
                             <NavItem to={`/proyectos/${projectId}/miembros`} icon={<FaUsers className="text-lg" />} isSidebarOpen={isSidebarOpen}>Miembros</NavItem>
                             <NavItem to={`/proyectos/${projectId}/archivos`} icon={<FaFileAlt className="text-lg" />} isSidebarOpen={isSidebarOpen}>Archivos</NavItem>
@@ -96,11 +90,11 @@ const Sidebar = ({ isSidebarOpen }) => {
                     )}
                 </nav>
 
-                {/* Footer del Sidebar */}
                 <div className="px-4 py-4 border-t border-slate-700">
                      <div className={`flex items-center ${isSidebarOpen ? 'gap-x-4' : 'justify-center'}`}>
                         <div className="w-10 h-10 rounded-full bg-indigo-500 flex items-center justify-center font-bold">
-                            {profile?.nombre_completo ? profile.nombre_completo.charAt(0) : 'U'}
+                            {/* Este acceso puede causar error si `profile` es null */}
+                            {profile?.nombre_completo ? profile.nombre_completo.charAt(0) : (user ? user.email.charAt(0).toUpperCase() : 'U')}
                         </div>
                         {isSidebarOpen && (
                             <div className="flex-1 overflow-hidden">

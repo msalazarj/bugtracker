@@ -4,81 +4,79 @@
 @tailwind utilities;
 
 /* 1. Fuentes y Base */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 @import 'react-quill/dist/quill.snow.css';
 
 @layer base {
   body {
     font-family: 'Inter', sans-serif;
-    @apply bg-slate-50 text-slate-900 antialiased;
+    @apply bg-slate-100 text-slate-800 antialiased;
   }
 
-  /* Mejora de los encabezados globales */
-  h1, h2, h3 {
-    @apply tracking-tight;
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-bold tracking-tight;
   }
 }
 
 @layer components {
-  /* 2. Navegación (Sidebar) */
+  /* 2. Enlaces de Navegación */
   .nav-link-item {
-    @apply flex items-center px-4 py-2.5 rounded-xl text-sm font-bold transition-all duration-200 ease-in-out;
-    @apply text-slate-400 hover:bg-indigo-50 hover:text-indigo-600;
+    @apply flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors;
+    @apply text-slate-500 hover:bg-indigo-50 hover:text-indigo-600;
   }
 
   .nav-link-item.active {
-    @apply bg-indigo-600 text-white shadow-lg shadow-indigo-100;
+    @apply bg-indigo-600 text-white shadow-md shadow-indigo-200;
   }
 
-  /* 3. Botones Estandarizados */
+  /* 3. Botones */
   .btn-primary {
-    @apply px-5 py-2.5 bg-indigo-600 text-white font-bold rounded-xl shadow-md 
+    @apply px-4 py-2 bg-indigo-600 text-white font-semibold rounded-lg shadow-sm 
            hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 
-           focus:ring-offset-2 transition-all active:scale-95 disabled:bg-slate-300 disabled:shadow-none;
+           focus:ring-offset-2 transition-all active:scale-95 disabled:bg-slate-300;
   }
 
   .btn-secondary {
-    @apply px-5 py-2.5 bg-white border border-slate-200 text-slate-700 font-bold rounded-xl
-           hover:bg-slate-50 transition-all active:scale-95;
+    @apply px-4 py-2 bg-white border border-slate-300 text-slate-700 font-semibold rounded-lg shadow-sm
+           hover:bg-slate-50 active:scale-95 disabled:opacity-50;
   }
 
-  .btn-danger {
-    @apply px-5 py-2.5 bg-red-50 border border-red-100 text-red-600 font-bold rounded-xl
-           hover:bg-red-100 transition-all active:scale-95;
+  /* 4. Estilos para Formularios (Inputs y Selects) */
+  .input-text {
+    @apply w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg shadow-sm 
+           text-sm font-medium text-slate-800 placeholder-slate-400 
+           focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all;
   }
 
-  /* 4. Formularios Modernos */
-  .input-field {
-    @apply mt-1 block w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl shadow-sm 
-           placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 
-           focus:border-transparent sm:text-sm transition-all;
+  /* Ajustes específicos para <select> para que herede la fuente y el estilo */
+  select.input-text {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    background-image: url('data:image/svg+xml;charset=UTF-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l4 4 4-4"/></svg>');
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    background-size: 1.25em;
+    padding-right: 2.5rem; /* Espacio para la flecha */
   }
 
-  /* 5. Contenedores (Cards) */
+  /* 5. Tarjetas y Contenedores */
   .card {
-    @apply bg-white p-6 rounded-2xl shadow-sm border border-slate-100 mb-6;
+    @apply bg-white p-6 rounded-xl shadow-sm border border-slate-200;
   }
 
-  .section-title {
-    @apply text-2xl font-black text-slate-800 mb-6 tracking-tight;
-  }
-
-  /* 6. Badges de Estado con Diseño "Soft" */
-  .status-badge {
-    @apply px-2.5 py-0.5 inline-flex text-[10px] leading-5 font-black uppercase tracking-wider rounded-full border;
-  }
-
-  /* Variantes de Estado */
-  .status-badge-active    { @apply bg-emerald-50 text-emerald-700 border-emerald-100; }
-  .status-badge-planned   { @apply bg-amber-50 text-amber-700 border-amber-100; }
-  .status-badge-closed    { @apply bg-slate-100 text-slate-600 border-slate-200; }
-  .status-badge-open      { @apply bg-blue-50 text-blue-700 border-blue-100; }
-  .status-badge-inprogress{ @apply bg-indigo-50 text-indigo-700 border-indigo-100; }
-  .status-badge-resolved  { @apply bg-green-50 text-green-700 border-green-100; }
-  .status-badge-reopened  { @apply bg-orange-50 text-orange-700 border-orange-100; }
+  /* --- OTRAS CLASES --- */
+  .section-title { @apply text-2xl font-black text-slate-800 mb-6; }
+  .status-badge { @apply px-2 py-0.5 text-xs font-bold uppercase tracking-wider rounded-full border; }
+  .status-badge-active { @apply bg-emerald-50 text-emerald-700 border-emerald-100; }
+  .status-badge-planned { @apply bg-amber-50 text-amber-700 border-amber-100; }
+  .status-badge-closed { @apply bg-slate-100 text-slate-600 border-slate-200; }
+  .status-badge-open { @apply bg-blue-50 text-blue-700 border-blue-100; }
+  .status-badge-inprogress { @apply bg-indigo-50 text-indigo-700 border-indigo-100; }
+  .status-badge-resolved { @apply bg-green-50 text-green-700 border-green-100; }
+  .status-badge-reopened { @apply bg-orange-50 text-orange-700 border-orange-100; }
 }
 
-/* 7. Utilidades de Animación para IDX */
 .animate-fade-in {
   animation: fadeIn 0.3s ease-out;
 }

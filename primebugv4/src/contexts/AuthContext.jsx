@@ -1,97 +1,98 @@
 // src/contexts/AuthContext.jsx
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { 
-  onAuthStateChanged, 
-  createUserWithEmailAndPassword, 
-  signInWithEmailAndPassword, 
-  signOut as firebaseSignOut 
-} from "firebase/auth";
+    onAuthStateChanged,
+    signInWithEmailAndPassword,
+    createUserWithEmailAndPassword,
+    signOut as firebaseSignOut,
+    sendPasswordResetEmail,
+    updatePassword as firebaseUpdatePassword
+} from 'firebase/auth';
 import { auth, db } from '../firebase';
-import { doc, setDoc, getDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, getDoc, updateDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
 
 const AuthContext = createContext();
 
-export const useAuth = () => {
-  return useContext(AuthContext);
-};
+export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  const [profile, setProfile] = useState(null);
-  const [loading, setLoading] = useState(true);
+    const [user, setUser] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [profile, setProfile] = useState(null);
 
-  useEffect(() => {
-    const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
-      setUser(currentUser);
-      setLoading(false);
-    });
+    useEffect(() => {
+        let profileUnsubscribe = null;
 
-    return () => unsubscribeAuth();
-  }, []);
+        const authUnsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+            if (profileUnsubscribe) profileUnsubscribe();
 
-  // Listener para el perfil del usuario (CORREGIDO)
-  useEffect(() => {
-    let unsubscribeProfile;
+            if (currentUser) {
+                const profileRef = doc(db, 'profiles', currentUser.uid);
 
-    if (user) {
-      const profileRef = doc(db, 'profiles', user.uid);
-      // El listener solo se activa DESPUÉS de que 'user' existe.
-      unsubscribeProfile = onSnapshot(profileRef, (docSnap) => {
-        if (docSnap.exists()) {
-          setProfile({ id: docSnap.id, ...docSnap.data() });
-        } else {
-          console.log("No se encontró el perfil del usuario, puede que sea un nuevo registro.");
-        }
-      }, (error) => {
-          console.error("Error al refrescar el perfil (AuthContext):", error.message);
-          // Este error es esperado si las reglas de seguridad aún no se han propagado
-          // o si el usuario intenta acceder a un perfil que no es el suyo.
-      });
-    } else {
-      // Si no hay usuario, limpiar el perfil.
-      setProfile(null);
-    }
+                // **INICIO DE LA CORRECCIÓN DEFINITIVA**
+                // 1. Antes de escuchar, se obtiene y se corrige el rol si es necesario.
+                const profileSnap = await getDoc(profileRef);
+                if (profileSnap.exists()) {
+                    const profileData = profileSnap.data();
+                    if (profileData.role === 'Owner' || profileData.role === 'Administrador') {
+                        await updateDoc(profileRef, { role: 'Admin' });
+                    }
+                }
+                // **FIN DE LA CORRECCIÓN DEFINITIVA**
 
-    // Limpiar el listener al desmontar el componente o si el usuario cambia
-    return () => {
-      if (unsubscribeProfile) {
-        unsubscribeProfile();
-      }
+                // 2. Ahora, se escucha en tiempo real el perfil (ya corregido).
+                profileUnsubscribe = onSnapshot(profileRef, (snap) => {
+                    setProfile(snap.exists() ? snap.data() : null);
+                    setLoading(false);
+                });
+                setUser(currentUser);
+
+            } else {
+                setUser(null);
+                setProfile(null);
+                setLoading(false);
+            }
+        });
+
+        return () => {
+            authUnsubscribe();
+            if (profileUnsubscribe) profileUnsubscribe();
+        };
+    }, []);
+
+    // Funciones de autenticación existentes...
+    const signIn = (email, password) => signInWithEmailAndPassword(auth, email, password);
+    const signOut = () => firebaseSignOut(auth);
+    const resetPassword = (email) => sendPasswordResetEmail(auth, email);
+    const updatePassword = (newPassword) => firebaseUpdatePassword(auth.currentUser, newPassword);
+    
+    const signUp = async (email, password, fullName) => {
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        const { user } = userCredential;
+        await setDoc(doc(db, 'profiles', user.uid), {
+            uid: user.uid,
+            email: user.email,
+            fullName: fullName,
+            role: 'User',
+            createdAt: serverTimestamp(),
+        });
+        return userCredential;
     };
-  }, [user]); // Dependencia clave: se ejecuta solo cuando 'user' cambia
 
-  const signUp = async (email, password, nombreCompleto) => {
-    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-    const newUser = userCredential.user;
-    // Crear el documento de perfil para el nuevo usuario
-    await setDoc(doc(db, 'profiles', newUser.uid), {
-      nombre_completo: nombreCompleto,
-      email: newUser.email,
-      createdAt: serverTimestamp()
-    });
-    return userCredential;
-  };
+    const value = {
+        user,
+        profile,
+        loading,
+        signIn,
+        signUp,
+        signOut,
+        resetPassword,
+        updatePassword,
+    };
 
-  const signIn = (email, password) => {
-    return signInWithEmailAndPassword(auth, email, password);
-  };
-
-  const signOut = () => {
-    return firebaseSignOut(auth);
-  };
-
-  const value = {
-    user,
-    profile,
-    loading,
-    signUp,
-    signIn,
-    signOut,
-  };
-
-  return (
-    <AuthContext.Provider value={value}>
-      {!loading && children}
-    </AuthContext.Provider>
-  );
+    return (
+        <AuthContext.Provider value={value}>
+            {!loading && children}
+        </AuthContext.Provider>
+    );
 };
