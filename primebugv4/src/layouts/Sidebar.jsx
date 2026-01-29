@@ -1,109 +1,117 @@
 // src/layouts/Sidebar.jsx
 import React, { useState, useEffect } from 'react';
-import { NavLink, Link } from 'react-router-dom';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { NavLink, Link, useNavigate, useMatch } from 'react-router-dom';
+import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext.jsx';
-import { FaTachometerAlt, FaClipboardList, FaUsers, FaBug, FaPlus, FaSignOutAlt, FaAngleDown, FaProjectDiagram } from 'react-icons/fa';
+import { 
+    FaTachometerAlt, FaUsers, FaProjectDiagram, FaBug, 
+    FaSignOutAlt, FaFolder, FaUserFriends, FaFileAlt
+} from 'react-icons/fa';
 
-const Sidebar = ({ isSidebarOpen }) => {
-    const [projects, setProjects] = useState([]);
-    const [showProjects, setShowProjects] = useState(true);
-    const { user, profile, signOut } = useAuth(); // Usamos el perfil del contexto
-
-    useEffect(() => {
-        let unsubscribe;
-        if (user) {
-            // Espera a que `user` exista antes de hacer la consulta.
-            const q = query(collection(db, "projects"), where("members", "array-contains", user.uid));
-            
-            unsubscribe = onSnapshot(q, (snapshot) => {
-                const projectsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                setProjects(projectsData);
-            }, (error) => {
-                // Este error es normal si el usuario acaba de registrarse y las reglas
-                // de seguridad tardan en aplicarse.
-                console.warn("Advertencia en Sidebar (puede ser temporal):", error.message);
-            });
-        }
-        
-        // Limpiar el listener al desmontar o si el usuario cambia
-        return () => {
-            if (unsubscribe) {
-                unsubscribe();
-            }
-        };
-    }, [user]); // La dependencia es solo `user`
-
-    const navLinkClasses = "flex items-center px-4 py-2 text-sm font-bold text-gray-300 rounded-lg hover:bg-gray-700 hover:text-white transition-colors";
-    const activeNavLinkClasses = "bg-gray-900 text-white";
+// Componente de Navegación reutilizable
+const NavItem = ({ to, icon, children, isSidebarOpen, end = true }) => {
+    const baseClasses = "flex items-center gap-x-4 px-6 py-3 text-base font-medium text-slate-300 rounded-lg hover:bg-slate-800 transition-colors";
+    const activeClasses = "bg-indigo-600 text-white";
+    const collapsedIconOnly = "w-full justify-center";
 
     return (
-        <aside className={`fixed top-0 left-0 h-full bg-gray-800 text-white transition-all duration-300 ${isSidebarOpen ? 'w-64' : 'w-20'} shadow-xl z-10`}>
+        <NavLink to={to} end={end} className={({ isActive }) => `${baseClasses} ${isActive ? activeClasses : ''} ${!isSidebarOpen ? collapsedIconOnly : ''}`}>
+            {icon}
+            {isSidebarOpen && <span className="truncate">{children}</span>}
+        </NavLink>
+    );
+};
+
+// Divisor visual para separar secciones del menú
+const SidebarSeparator = ({ isSidebarOpen }) => (
+    isSidebarOpen ? <hr className="border-t border-slate-700 mx-6 my-4" /> : null
+);
+
+const Sidebar = ({ isSidebarOpen }) => {
+    const { user, profile, signOut } = useAuth();
+    const navigate = useNavigate();
+    
+    // Hook para detectar si estamos dentro de un proyecto
+    const projectMatch = useMatch('/proyectos/:projectId/*');
+    const projectId = projectMatch?.params.projectId;
+
+    const [projectName, setProjectName] = useState('');
+
+    // Cargar el nombre del proyecto actual si existe
+    useEffect(() => {
+        if (!projectId) {
+            setProjectName('');
+            return;
+        }
+        const fetchProjectName = async () => {
+            const projectRef = doc(db, 'projects', projectId);
+            const docSnap = await getDoc(projectRef);
+            if (docSnap.exists()) {
+                setProjectName(docSnap.data().nombre);
+            }
+        };
+        fetchProjectName();
+    }, [projectId]);
+
+    const handleSignOut = async () => {
+        await signOut();
+        navigate('/login');
+    }
+
+    return (
+        <aside className={`fixed top-0 left-0 h-full bg-slate-900 text-white transition-all duration-300 z-30 ${isSidebarOpen ? 'w-64' : 'w-20'}`}>
             <div className="flex flex-col h-full">
-                {/* Logo y Nombre */}
-                <div className="flex items-center justify-center h-20 border-b border-gray-700">
-                    <FaBug className={`text-3xl text-indigo-400 ${isSidebarOpen ? 'mr-3' : ''}`}/>
-                    {isSidebarOpen && <span className="text-xl font-bold whitespace-nowrap">PrimeBug</span>}
+                {/* Logo de PrimeBug */}
+                <div className={`flex items-center h-20 border-b border-slate-700 ${isSidebarOpen ? 'px-6' : 'px-4 justify-center'}`}>
+                    <Link to="/" className="flex items-center gap-3">
+                        <FaBug className="text-indigo-400 text-3xl flex-shrink-0" />
+                        {isSidebarOpen && <span className="text-xl font-bold tracking-wider whitespace-nowrap">PrimeBug</span>}
+                    </Link>
                 </div>
 
-                {/* Navegación Principal */}
-                <nav className="flex-1 px-4 py-6 space-y-2">
-                    <NavLink to="/" className={({ isActive }) => `${navLinkClasses} ${isActive ? activeNavLinkClasses : ''}`}>
-                        <FaTachometerAlt className={`text-lg ${isSidebarOpen ? 'mr-4' : 'mx-auto'}`} />
-                        {isSidebarOpen && <span>Dashboard</span>}
-                    </NavLink>
-                    <NavLink to="/bugs" className={({ isActive }) => `${navLinkClasses} ${isActive ? activeNavLinkClasses : ''}`}>
-                        <FaBug className={`text-lg ${isSidebarOpen ? 'mr-4' : 'mx-auto'}`} />
-                        {isSidebarOpen && <span>Mis Bugs</span>}
-                    </NavLink>
-                    <NavLink to="/equipos" className={({ isActive }) => `${navLinkClasses} ${isActive ? activeNavLinkClasses : ''}`}>
-                        <FaUsers className={`text-lg ${isSidebarOpen ? 'mr-4' : 'mx-auto'}`} />
-                        {isSidebarOpen && <span>Equipos</span>}
-                    </NavLink>
+                <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
+                    {/* --- NAVEGACIÓN PRINCIPAL --- */}
+                    <NavItem to="/" icon={<FaTachometerAlt className="text-lg" />} isSidebarOpen={isSidebarOpen}>Dashboard</NavItem>
+                    
+                    <SidebarSeparator isSidebarOpen={isSidebarOpen} />
 
-                    {/* Sección de Proyectos */}
-                     <div className="pt-4">
-                        <button onClick={() => setShowProjects(!showProjects)} className="w-full flex justify-between items-center px-4 py-2 text-sm font-bold text-gray-400 hover:text-white">
-                            <div className="flex items-center">
-                                <FaProjectDiagram className={`text-lg ${isSidebarOpen ? 'mr-4' : 'mx-auto'}`} />
-                                {isSidebarOpen && <span>Proyectos</span>}
-                            </div>
-                            {isSidebarOpen && <FaAngleDown className={`transition-transform ${showProjects ? 'rotate-180' : ''}`} />}
-                        </button>
-                        {showProjects && isSidebarOpen && (
-                            <div className="mt-2 space-y-1 pl-8 pr-4">
-                                {projects.map(project => (
-                                     // RUTA CORREGIDA: Apunta a la lista de issues del proyecto
-                                    <NavLink key={project.id} to={`/proyectos/${project.id}/issues`} className={({ isActive }) => `block px-3 py-2 text-xs font-medium rounded-md hover:bg-gray-700 ${isActive ? 'text-white' : 'text-gray-400'}`}>
-                                        {project.nombre}
-                                    </NavLink>
-                                ))}
-                                <Link to="/proyectos/crear" className="flex items-center px-3 py-2 text-xs font-bold text-indigo-300 hover:text-indigo-200">
-                                    <FaPlus className="mr-2" /> Nuevo Proyecto
-                                </Link>
-                            </div>
-                        )}
-                    </div>
+                    <NavItem to="/equipos" icon={<FaUsers className="text-lg" />} isSidebarOpen={isSidebarOpen}>Equipos</NavItem>
+                    <NavItem to="/miembros" icon={<FaUserFriends className="text-lg" />} isSidebarOpen={isSidebarOpen}>Miembros</NavItem>
+                    <NavItem to="/proyectos" icon={<FaProjectDiagram className="text-lg" />} isSidebarOpen={isSidebarOpen} end={false}>Proyectos</NavItem>
+
+                    {/* --- NAVEGACIÓN CONTEXTUAL DE PROYECTO --- */}
+                    {projectId && (
+                        <>
+                            <SidebarSeparator isSidebarOpen={isSidebarOpen} />
+                            
+                            {isSidebarOpen && <span className="px-6 text-xs font-bold text-slate-500 uppercase tracking-wider">Proyecto</span>}
+                            {isSidebarOpen && <p className="px-6 pt-2 pb-1 text-base font-semibold text-white truncate">{projectName || 'Cargando...'}</p>}
+                            
+                            <NavItem to={`/proyectos/${projectId}`} icon={<FaFolder className="text-lg" />} isSidebarOpen={isSidebarOpen}>Detalles</NavItem>
+                            <NavItem to={`/proyectos/${projectId}/miembros`} icon={<FaUsers className="text-lg" />} isSidebarOpen={isSidebarOpen}>Miembros</NavItem>
+                            <NavItem to={`/proyectos/${projectId}/archivos`} icon={<FaFileAlt className="text-lg" />} isSidebarOpen={isSidebarOpen}>Archivos</NavItem>
+                            <NavItem to={`/proyectos/${projectId}/issues`} icon={<FaBug className="text-lg" />} isSidebarOpen={isSidebarOpen} end={false}>Bugs</NavItem>
+                        </>
+                    )}
                 </nav>
 
                 {/* Footer del Sidebar */}
-                <div className="px-4 py-4 border-t border-gray-700">
-                    {isSidebarOpen ? (
-                        <div className="flex items-center">
-                            <div className="flex-1">
-                                <p className="text-sm font-bold text-white">{profile?.nombre_completo || 'Cargando...'}</p>
-                                <p className="text-xs text-gray-400">{user?.email}</p>
-                            </div>
-                            <button onClick={signOut} className="p-2 text-gray-400 hover:text-white rounded-full hover:bg-gray-700">
-                                <FaSignOutAlt />
-                            </button>
+                <div className="px-4 py-4 border-t border-slate-700">
+                     <div className={`flex items-center ${isSidebarOpen ? 'gap-x-4' : 'justify-center'}`}>
+                        <div className="w-10 h-10 rounded-full bg-indigo-500 flex items-center justify-center font-bold">
+                            {profile?.nombre_completo ? profile.nombre_completo.charAt(0) : 'U'}
                         </div>
-                    ) : (
-                        <button onClick={signOut} className="w-full flex justify-center p-3 text-gray-400 hover:text-white rounded-lg hover:bg-gray-700">
-                            <FaSignOutAlt />
+                        {isSidebarOpen && (
+                            <div className="flex-1 overflow-hidden">
+                                <p className="text-sm font-semibold text-white truncate">{profile?.nombre_completo || 'Usuario'}</p>
+                                <p className="text-xs text-slate-400 truncate">{user?.email}</p>
+                            </div>
+                        )}
+                         <button onClick={handleSignOut} title="Cerrar sesión" className={`p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors ${!isSidebarOpen ? 'ml-auto' : ''}`}>
+                            <FaSignOutAlt className="text-lg" />
                         </button>
-                    )}
+                    </div>
                 </div>
             </div>
         </aside>

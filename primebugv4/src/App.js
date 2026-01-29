@@ -1,6 +1,6 @@
 // src/App.js
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 
 // --- Páginas de Autenticación ---
@@ -16,7 +16,7 @@ import MainLayout from './layouts/MainLayout.jsx';
 import Dashboard from './pages/Dashboard/Dashboard.jsx';
 import ProjectsList from './pages/Projects/ProjectsList.jsx';
 import ProjectCreate from './pages/Projects/ProjectCreate.jsx';
-import ProjectDetail from './pages/Projects/ProjectDetail.jsx'; // This will act as a layout
+import ProjectDetail from './pages/Projects/ProjectDetail.jsx';
 import ProjectEdit from './pages/Projects/ProjectEdit.jsx';
 import ProjectMembers from './pages/Projects/ProjectMembers.jsx';
 import BugList from './pages/Bugs/BugList.jsx';
@@ -55,7 +55,7 @@ function App() {
           <Route path="/recuperar-clave" element={<ForgotPassword />} />
           <Route path="/actualizar-clave" element={<UpdatePassword />} />
 
-          {/* --- RUTAS PROTEGIDAS (Envueltas en ProtectedRoute y MainLayout) --- */}
+          {/* --- RUTAS PROTEGIDAS --- */}
           <Route
             path="/"
             element={
@@ -67,29 +67,30 @@ function App() {
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="perfil" element={<UserProfile />} />
-            <Route path="miembros" element={<MemberList />} />
 
+            {/* --- REPARACIÓN: Rutas añadidas para coincidir con el Sidebar --- */}
+            <Route path="bugs" element={<BugList />} />
+            <Route path="equipos" element={<MemberList />} />
+            
             {/* Gestión de Proyectos */}
             <Route path="proyectos" element={<ProjectsList />} />
             <Route path="proyectos/crear" element={<ProjectCreate />} />
             <Route path="proyectos/editar/:projectId" element={<ProjectEdit />} />
             
-            {/* --- ANIDAMIENTO DE RUTAS DEL PROYECTO --- */}
-            {/* ProjectDetail ahora actúa como un Layout para sus rutas hijas */}
+            {/* Rutas anidadas de un proyecto específico */}
             <Route path="proyectos/:projectId" element={<ProjectDetail />}>
-              {/* La ruta 'index' se renderiza por defecto dentro del Outlet de ProjectDetail */}
-              {/* Por ahora apunta a la lista de issues, que es lo más común */}
               <Route index element={<Navigate to="issues" replace />} />
               <Route path="issues" element={<BugList />} />
               <Route path="miembros" element={<ProjectMembers />} />
             </Route>
             
-            {/* Gestión de Issues (Bugs) - Estas son páginas completas, no anidadas */}
+            {/* Rutas para crear/editar/ver un bug */}
             <Route path="proyectos/:projectId/issues/crear" element={<BugCreate />} />
             <Route path="proyectos/:projectId/issues/editar/:bugId" element={<BugCreate />} />
             <Route path="proyectos/:projectId/issues/:bugId" element={<BugDetail />} />
           </Route>
 
+          {/* Ruta comodín que redirige al dashboard si no hay coincidencia */}
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </AuthProvider>

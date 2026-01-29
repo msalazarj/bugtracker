@@ -2,173 +2,101 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext.jsx';
-import { FaEnvelope, FaLock, FaUser } from 'react-icons/fa';
+import { FaBug, FaEnvelope, FaLock, FaUser, FaUserPlus } from 'react-icons/fa';
+
+const InputField = React.forwardRef(({ icon, ...props }, ref) => (
+    <div className="relative">
+        <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-gray-400">
+            {icon}
+        </span>
+        <input
+            ref={ref}
+            className="w-full pl-12 pr-3 py-3 border border-slate-300 rounded-lg shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
+            {...props}
+        />
+    </div>
+));
 
 const Register = () => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [nombreCompleto, setNombreCompleto] = useState('');
-  const [error, setError] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const { signUp } = useAuth();
-  const navigate = useNavigate();
+    const [nombreCompleto, setNombreCompleto] = useState('');
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
+    const [error, setError] = useState(null);
+    const { signUp, loading } = useAuth();
+    const navigate = useNavigate();
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError(null);
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setError(null);
+        if (password !== confirmPassword) { return setError('Las contraseñas no coinciden.'); }
+        if (password.length < 8) { return setError('La contraseña debe tener al menos 8 caracteres.'); }
+        try {
+            await signUp(email, password, { nombre_completo: nombreCompleto });
+            navigate('/dashboard');
+        } catch (err) {
+            if (err.code === 'auth/email-already-in-use') { setError('Este correo electrónico ya está en uso.');
+            } else if (err.code === 'auth/invalid-email') { setError('El formato del correo electrónico no es válido.');
+            } else { setError('Ha ocurrido un error al crear la cuenta. Inténtalo de nuevo.'); }
+        }
+    };
 
-    // Validaciones de UI/UX
-    if (password !== confirmPassword) {
-      setError('Las contraseñas no coinciden.');
-      return;
-    }
-    if (password.length < 8) {
-      setError('La contraseña debe tener al menos 8 caracteres.');
-      return;
-    }
+    return (
+        <div className="min-h-screen bg-slate-50 font-sans">
+            <div className="grid grid-cols-1 md:grid-cols-2 min-h-screen">
+                {/* Columna de Branding (Izquierda) - CORREGIDA */}
+                <div className="bg-slate-900 text-white p-12 flex flex-col justify-center items-start">
+                    <div className="w-full max-w-md">
+                        <div className="flex items-center gap-3 mb-8">
+                            <FaBug className="text-indigo-500 text-3xl" />
+                            <span className="text-2xl font-bold tracking-wider">Aguas Nuevas</span>
+                        </div>
+                        <h1 className="text-4xl md:text-5xl font-bold leading-tight mb-4">
+                           Plataforma de Gestión de Incidencias
+                        </h1>
+                        <p className="text-slate-300 text-lg">
+                           Únete a la herramienta exclusiva para el seguimiento y resolución de bugs en los proyectos de Aguas Nuevas.
+                        </p>
+                    </div>
+                </div>
 
-    setLoading(true);
+                {/* Columna del Formulario (Derecha) - CORREGIDA */}
+                <div className="flex flex-col justify-center items-center p-8 md:p-12">
+                    <div className="w-full max-w-sm">
+                        <div className="text-left mb-8">
+                            <h2 className="text-3xl font-bold text-slate-800">Crea tu Cuenta</h2>
+                            <p className="mt-2 text-slate-600">Regístrate para empezar a gestionar incidencias.</p>
+                        </div>
 
-    try {
-      // Llamamos a signUp que ahora maneja internamente Auth y Firestore
-      await signUp(email, password, { nombre_completo: nombreCompleto });
-      
-      // UX: En Firebase el usuario ya está logueado al registrarse, 
-      // pero por seguridad y flujo de la app, lo mandamos al login o dashboard.
-      alert('¡Registro exitoso! Ya puedes utilizar PrimeTrack.');
-      navigate('/dashboard');
-    } catch (err) {
-      console.error("Error en registro:", err.code);
-      
-      // Mapeo de errores de Firebase para el usuario
-      if (err.code === 'auth/email-already-in-use') {
-        setError('Este correo electrónico ya está registrado.');
-      } else if (err.code === 'auth/invalid-email') {
-        setError('El formato del correo no es válido.');
-      } else if (err.code === 'auth/weak-password') {
-        setError('La contraseña es muy débil.');
-      } else {
-        setError('Ocurrió un error inesperado: ' + err.message);
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
+                        {error && (
+                            <div className="bg-red-100 border-l-4 border-red-500 text-red-800 p-4 rounded-lg mb-6" role="alert">
+                                <p className="font-semibold">{error}</p>
+                            </div>
+                        )}
 
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-100 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="w-full max-w-md space-y-8 rounded-lg bg-white p-8 shadow-lg">
-        <div className="text-center">
-          <h2 className="text-3xl font-bold text-gray-800">Crear Cuenta</h2>
-          <p className="mt-2 text-sm text-gray-600">Únete a PrimeTrack Bug Tracker</p>
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            <InputField icon={<FaUser />} type="text" placeholder="Nombre Completo" required value={nombreCompleto} onChange={(e) => setNombreCompleto(e.target.value)} />
+                            <InputField icon={<FaEnvelope />} type="email" placeholder="tu@email.com" required value={email} onChange={(e) => setEmail(e.target.value)} />
+                            <InputField icon={<FaLock />} type="password" placeholder="Contraseña (mín. 8 caracteres)" required value={password} onChange={(e) => setPassword(e.target.value)} />
+                            <InputField icon={<FaLock />} type="password" placeholder="Confirmar Contraseña" required value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+                            
+                            <div className="pt-2">
+                               <button type="submit" disabled={loading} className="btn-primary w-full flex items-center justify-center py-3 text-base font-medium">
+                                    <FaUserPlus className="mr-2" />
+                                    {loading ? 'Creando cuenta...' : 'Crear Mi Cuenta'}
+                                </button>
+                            </div>
+                        </form>
+
+                        <p className="text-center text-sm text-slate-600 mt-8">
+                            ¿Ya tienes una cuenta?{' '}
+                            <Link to="/login" className="font-semibold text-indigo-600 hover:underline">Inicia Sesión aquí</Link>
+                        </p>
+                    </div>
+                </div>
+            </div>
         </div>
-
-        <form onSubmit={handleSubmit} className="mt-8 space-y-6">
-          {error && (
-            <div className="rounded-md bg-red-50 border border-red-200 p-4 text-sm text-red-700 text-center animate-pulse">
-              {error}
-            </div>
-          )}
-          
-          <div className="space-y-4">
-            {/* Campo: Nombre Completo */}
-            <div>
-              <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
-                Nombre Completo
-              </label>
-              <div className="relative">
-                <FaUser className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-gray-400" />
-                <input
-                  type="text"
-                  id="name"
-                  className="input-field w-full pl-10 border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                  value={nombreCompleto}
-                  onChange={(e) => setNombreCompleto(e.target.value)}
-                  placeholder="Tu Nombre Completo"
-                  required
-                />
-              </div>
-            </div>
-
-            {/* Campo: Email */}
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-                Email
-              </label>
-              <div className="relative">
-                <FaEnvelope className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-gray-400" />
-                <input
-                  type="email"
-                  id="email"
-                  className="input-field w-full pl-10 border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="tu@ejemplo.com"
-                  required
-                />
-              </div>
-            </div>
-
-            {/* Campo: Contraseña */}
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
-                Contraseña
-              </label>
-              <div className="relative">
-                <FaLock className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-gray-400" />
-                <input
-                  type="password"
-                  id="password"
-                  className="input-field w-full pl-10 border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Mínimo 8 caracteres"
-                  required
-                />
-              </div>
-            </div>
-
-            {/* Campo: Confirmar Contraseña */}
-            <div>
-              <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-1">
-                Repetir Contraseña
-              </label>
-              <div className="relative">
-                <FaLock className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-gray-400" />
-                <input
-                  type="password"
-                  id="confirmPassword"
-                  className="input-field w-full pl-10 border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Repite tu contraseña"
-                  required
-                />
-              </div>
-            </div>
-          </div>
-
-          <button
-            type="submit"
-            className={`btn-primary w-full py-3 rounded-md font-bold text-white transition-colors ${
-              loading ? 'bg-blue-300 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 shadow-md'
-            }`}
-            disabled={loading}
-          >
-            {loading ? 'Creando cuenta...' : 'Registrar'}
-          </button>
-        </form>
-
-        <p className="text-center text-gray-600 text-sm mt-4">
-          ¿Ya tienes una cuenta?{' '}
-          <Link to="/login" className="font-medium text-blue-600 hover:underline">
-            Iniciar Sesión
-          </Link>
-        </p>
-      </div>
-    </div>
-  );
+    );
 };
 
 export default Register;
