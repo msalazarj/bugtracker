@@ -19,11 +19,12 @@ import ProjectCreate from './pages/Projects/ProjectCreate.jsx';
 import ProjectDetail from './pages/Projects/ProjectDetail.jsx';
 import ProjectEdit from './pages/Projects/ProjectEdit.jsx';
 import ProjectMembers from './pages/Projects/ProjectMembers.jsx';
+import ProjectIssues from './pages/Projects/ProjectIssues.jsx';
+import ProjectDocumentation from './pages/Projects/ProjectDocumentation.jsx'; // <-- NUEVO
 import BugList from './pages/Bugs/BugList.jsx';
 import BugCreate from './pages/Bugs/BugCreate.jsx';
 import BugDetail from './pages/Bugs/BugDetail.jsx';
 import UserProfile from './pages/UserProfile/UserProfile.jsx';
-import MemberList from './pages/Members/MemberList.jsx';
 import TeamList from './pages/Teams/TeamList.jsx';
 import TeamCreate from './pages/Teams/TeamCreate.jsx';
 import TeamDetail from './pages/Teams/TeamDetail.jsx';
@@ -59,7 +60,7 @@ function App() {
           <Route path="/recuperar-clave" element={<ForgotPassword />} />
           <Route path="/actualizar-clave" element={<UpdatePassword />} />
 
-          {/* --- RUTAS PROTEGIDAS --- */}
+          {/* --- RUTAS PROTEGIDAS (DENTRO DEL LAYOUT PRINCIPAL) --- */}
           <Route
             path="/"
             element={
@@ -71,7 +72,10 @@ function App() {
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="perfil" element={<UserProfile />} />
+            
+            {/* Gestión Global de Bugs */}
             <Route path="bugs" element={<BugList />} />
+            <Route path="bugs/:bugId" element={<BugDetail />} />
             
             {/* Gestión de Equipos */}
             <Route path="equipos" element={<TeamList />} />
@@ -82,22 +86,20 @@ function App() {
             {/* Gestión de Proyectos */}
             <Route path="proyectos" element={<ProjectsList />} />
             <Route path="proyectos/crear" element={<ProjectCreate />} />
-            <Route path="proyectos/editar/:projectId" element={<ProjectEdit />} />
             
-            {/* Rutas anidadas de un proyecto específico */}
-            <Route path="proyectos/:projectId" element={<ProjectDetail />}>
-              <Route index element={<Navigate to="issues" replace />} />
-              <Route path="issues" element={<BugList />} />
-              <Route path="miembros" element={<ProjectMembers />} />
-            </Route>
+            <Route path="proyectos/:projectId" element={<Navigate to="detalles" replace />} />
+            <Route path="proyectos/:projectId/detalles" element={<ProjectDetail />} />
+            <Route path="proyectos/:projectId/bugs" element={<ProjectIssues />} />
+            <Route path="proyectos/:projectId/miembros" element={<ProjectMembers />} />
+            <Route path="proyectos/:projectId/documentacion" element={<ProjectDocumentation />} /> {/* <-- NUEVA RUTA */}
             
-            {/* Rutas para crear/editar/ver un bug */}
-            <Route path="proyectos/:projectId/issues/crear" element={<BugCreate />} />
-            <Route path="proyectos/:projectId/issues/editar/:bugId" element={<BugCreate />} />
-            <Route path="proyectos/:projectId/issues/:bugId" element={<BugDetail />} />
+            {/* Rutas de acción de proyecto */}
+            <Route path="proyectos/:projectId/editar" element={<ProjectEdit />} />
+            <Route path="proyectos/:projectId/crear-bug" element={<BugCreate />} />
+
           </Route>
 
-          {/* Ruta comodín que redirige al dashboard si no hay coincidencia */}
+          {/* Ruta comodín para cualquier otra URL */}
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </AuthProvider>

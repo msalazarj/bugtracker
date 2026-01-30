@@ -1,117 +1,177 @@
 // src/pages/Projects/ProjectIssues.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { collection, query, where, onSnapshot, doc, getDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, getDocs } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext.jsx';
-import { FaPlus, FaBug } from 'react-icons/fa';
+import { FaBug, FaEye, FaUserCircle, FaSearch, FaTasks, FaCheckCircle, FaExclamationCircle, FaRedo } from 'react-icons/fa';
+import Tippy from '@tippyjs/react';
+import 'tippy.js/dist/tippy.css';
+import { getStatusPillClass, getPriorityInfo } from '../../utils/styleHelpers';
+
+// --- Componente: Tarjeta de Estadísticas ---
+const StatCard = ({ icon, title, value, color, loading }) => {
+    if (loading) {
+        return <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 animate-pulse"><div className="h-6 w-2/3 bg-slate-200 rounded"></div><div className="h-10 w-1/3 bg-slate-200 rounded mt-2"></div></div>;
+    }
+    return (
+        <div className={`bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex items-center gap-4`}>
+            <div className={`w-12 h-12 flex-shrink-0 rounded-lg flex items-center justify-center ${color}`}>{icon}</div>
+            <div>
+                <p className="text-xs font-medium text-slate-500">{title}</p>
+                <p className="text-2xl font-bold text-slate-800">{value}</p>
+            </div>
+        </div>
+    );
+};
+
+// --- Componente: Fila de Bug Rediseñada ---
+const BugRow = ({ bug, assignedUser }) => {
+    const { icon: PriorityIcon, color: priorityColor, name: priorityName } = getPriorityInfo(bug.prioridad);
+
+    return (
+        <div className="bg-white p-4 rounded-lg shadow-sm border border-slate-100 flex flex-col sm:flex-row sm:items-center gap-4 hover:shadow-md hover:border-indigo-200 transition-all duration-200">
+            <Tippy content={`Prioridad: ${priorityName}`} placement="top">
+                <div className={`flex-shrink-0 text-${priorityColor}`}><PriorityIcon size={20} /></div>
+            </Tippy>
+            <div className="flex-grow">
+                <Link to={`/bugs/${bug.id}`} className="font-bold text-slate-800 hover:text-indigo-600 transition-colors line-clamp-1">{bug.titulo}</Link>
+                <p className="text-xs text-slate-500">ID: {bug.id}</p>
+            </div>
+            <div className="flex items-center gap-4 flex-wrap">
+                <Tippy content={`Estado: ${bug.estado}`} placement="top">
+                    <div className={`text-xs font-semibold px-2.5 py-0.5 rounded-full ${getStatusPillClass(bug.estado)}`}>{bug.estado}</div>
+                </Tippy>
+                <Tippy content={assignedUser?.nombre_completo || 'Sin asignar'} placement="top">
+                    {assignedUser ? (
+                        <div className="w-8 h-8 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center text-sm font-bold">
+                            {assignedUser.nombre_completo.charAt(0)}
+                        </div>
+                    ) : (
+                        <FaUserCircle className="w-8 h-8 text-slate-300" />
+                    )}
+                </Tippy>
+            </div>
+            <div className="flex items-center gap-2 sm:ml-auto">
+                 <Tippy content="Ver Bug" placement="top">
+                    <Link to={`/bugs/${bug.id}`} className="p-2 text-slate-400 hover:bg-slate-100 hover:text-indigo-600 rounded-md"><FaEye /></Link>
+                </Tippy>
+            </div>
+        </div>
+    );
+};
 
 const ProjectIssues = () => {
   const { projectId } = useParams();
-  const [bugs, setBugs] = useState([]);
-  const [project, setProject] = useState(null);
-  const [loading, setLoading] = useState(true);
   const { user } = useAuth();
+  
+  // States
+  const [bugs, setBugs] = useState([]);
+  const [bugStats, setBugStats] = useState({ abiertos: 0, enProgreso: 0, resueltos: 0, reabiertos: 0 });
+  const [profilesMap, setProfilesMap] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('Todos');
+  const [priorityFilter, setPriorityFilter] = useState('Todas');
+  const [assignedFilter, setAssignedFilter] = useState('Todos');
+
+  // Memoization
+  const allTeamMembers = useMemo(() => Object.values(profilesMap), [profilesMap]);
+  const filteredBugs = useMemo(() => {
+    return bugs.filter(bug => {
+        const searchMatch = !searchTerm || bug.titulo.toLowerCase().includes(searchTerm.toLowerCase());
+        const statusMatch = statusFilter === 'Todos' || bug.estado === statusFilter;
+        const priorityMatch = priorityFilter === 'Todas' || bug.prioridad === priorityFilter;
+        const assignedMatch = assignedFilter === 'Todos' || bug.asignado_a === assignedFilter;
+        return searchMatch && statusMatch && priorityMatch && assignedMatch;
+    });
+  }, [bugs, searchTerm, statusFilter, priorityFilter, assignedFilter]);
 
   useEffect(() => {
-    if (!user || !projectId) return;
+    if (!projectId) return;
 
-    const fetchProjectAndBugs = async () => {
-      setLoading(true);
-      try {
-        // 1. Verificar acceso al proyecto
-        const projectRef = doc(db, "projects", projectId);
-        const projectSnap = await getDoc(projectRef);
+    const bugsQuery = query(collection(db, "bugs"), where("proyecto_id", "==", projectId));
 
-        if (projectSnap.exists() && projectSnap.data().members.includes(user.uid)) {
-          setProject({ id: projectSnap.id, ...projectSnap.data() });
+    const unsubBugs = onSnapshot(bugsQuery, async (bugsSnapshot) => {
+        const bugsData = bugsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setBugs(bugsData);
 
-          // 2. Escuchar los bugs de este proyecto
-          const bugsQuery = query(collection(db, "bugs"), where("proyecto_id", "==", projectId));
-          const unsubscribe = onSnapshot(bugsQuery, (snapshot) => {
-            const bugsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setBugs(bugsData);
-            setLoading(false);
-          });
-          return unsubscribe; // Devolver para limpiar el listener
-        } else {
-          // No tiene acceso o el proyecto no existe
-          setProject(null);
-          setBugs([]);
-          setLoading(false);
+        const stats = { abiertos: 0, enProgreso: 0, resueltos: 0, reabiertos: 0 };
+        bugsData.forEach(bug => {
+            if (bug.estado === 'Abierto') stats.abiertos++;
+            if (bug.estado === 'En Progreso') stats.enProgreso++;
+            if (bug.estado === 'Resuelto') stats.resueltos++;
+            if (bug.estado === 'Reabierto') stats.reabiertos++;
+        });
+        setBugStats(stats);
+
+        const userIds = [...new Set(bugsData.map(b => b.asignado_a).filter(Boolean))];
+        if (userIds.length > 0) {
+            const profilesQuery = query(collection(db, "profiles"), where("__name__", "in", userIds));
+            const profilesSnap = await getDocs(profilesQuery);
+            const profilesData = profilesSnap.docs.reduce((acc, doc) => ({...acc, [doc.id]: doc.data()}), {});
+            setProfilesMap(profilesData);
         }
-      } catch (error) {
-        console.error("Error al cargar issues del proyecto:", error.message);
+        
         setLoading(false);
-      }
-    };
+    });
 
-    let unsubscribe;
-    fetchProjectAndBugs().then(res => unsubscribe = res);
-
-    return () => {
-      if (unsubscribe) {
-        unsubscribe();
-      }
-    };
-  }, [projectId, user]);
-
-  if (loading) {
-    return <div className="p-6 text-center">Cargando issues...</div>;
-  }
-
-  if (!project) {
-    return <div className="p-6 text-center text-red-500">Acceso denegado o el proyecto no existe.</div>;
-  }
+    return () => unsubBugs();
+  }, [projectId]);
 
   return (
-    <div className="p-4 sm:p-6 space-y-6">
-        <div className="flex justify-between items-center">
-            <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">Bugs de: {project.nombre}</h1>
-            <Link to={`/proyectos/${projectId}/crear-bug`} className="inline-flex items-center px-4 py-2 bg-indigo-600 text-white font-bold rounded-lg shadow-sm hover:bg-indigo-700">
-                <FaPlus className="mr-2"/> Reportar Bug
-            </Link>
+    <div className="space-y-6">
+        {/* Sección de Estadísticas */}
+         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            <StatCard icon={<FaExclamationCircle size={20} />} title="Abiertos" value={loading ? '-' : bugStats.abiertos} color="bg-blue-100 text-blue-600" loading={loading} />
+            <StatCard icon={<FaTasks size={20} />} title="En Progreso" value={loading ? '-' : bugStats.enProgreso} color="bg-amber-100 text-amber-600" loading={loading} />
+            <StatCard icon={<FaCheckCircle size={20} />} title="Resueltos" value={loading ? '-' : bugStats.resueltos} color="bg-green-100 text-green-600" loading={loading} />
+            <StatCard icon={<FaRedo size={20} />} title="Reabiertos" value={loading ? '-' : bugStats.reabiertos} color="bg-red-100 text-red-600" loading={loading} />
         </div>
 
-        {bugs.length > 0 ? (
-             <div className="bg-white rounded-lg shadow-md overflow-hidden border border-gray-100">
-                <table className="w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                        <tr>
-                            <th className="p-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Título</th>
-                            <th className="p-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Estado</th>
-                            <th className="p-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Prioridad</th>
-                            <th className="p-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Asignado a</th>
-                            <th className="p-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Fecha</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                        {bugs.map(bug => (
-                            <tr key={bug.id} className="hover:bg-gray-50">
-                                <td className="p-4 text-sm font-bold text-gray-800">
-                                    <Link to={`/proyectos/${projectId}/issues/${bug.id}`} className="hover:underline text-indigo-600">
-                                        {bug.titulo}
-                                    </Link>
-                                </td>
-                                <td className="p-4 text-sm"><span className={`px-2 py-1 text-xs font-bold rounded-full ${bug.estado === 'Abierto' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>{bug.estado}</span></td>
-                                <td className="p-4 text-sm text-gray-600">{bug.prioridad}</td>
-                                <td className="p-4 text-sm text-gray-600">{bug.asignado_a_nombre || 'Sin asignar'}</td>
-                                <td className="p-4 text-sm text-gray-500">{bug.creado_en?.toDate().toLocaleDateString()}</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
-        ) : (
-            <div className="text-center bg-white p-10 rounded-lg shadow-sm">
-                <FaBug className="mx-auto text-4xl text-gray-300"/>
-                <h3 className="mt-4 text-lg font-bold text-gray-800">¡Todo en orden!</h3>
-                <p className="mt-2 text-sm text-gray-500">No se han reportado bugs en este proyecto todavía.</p>
-                 <Link to={`/proyectos/${projectId}/crear-bug`} className="mt-6 inline-flex items-center px-4 py-2 bg-indigo-600 text-white font-bold rounded-lg shadow-sm hover:bg-indigo-700">
-                    Reportar el primer bug
+        {/* Lista de Bugs */}
+        <div className="space-y-4">
+            <div className="flex justify-between items-center">
+                <h2 className="text-2xl font-bold text-slate-800">Lista de Bugs</h2>
+                <Link to={`/proyectos/${projectId}/crear-bug`} className="btn-primary flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium whitespace-nowrap">
+                    Reportar Bug
                 </Link>
             </div>
-        )}
+            <div className="bg-white p-4 rounded-lg shadow-sm border border-slate-100 flex flex-col md:flex-row items-center gap-3">
+                <div className="relative w-full md:flex-grow">
+                    <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input type="text" placeholder="Buscar por título..." className="input-text pl-10 w-full" onChange={e => setSearchTerm(e.target.value)} />
+                </div>
+                <div className="flex items-center gap-3 w-full md:w-auto">
+                    <select className="input-text w-full" onChange={e => setStatusFilter(e.target.value)} value={statusFilter}>
+                        <option value="Todos">Todos los Estados</option>
+                        <option>Abierto</option><option>En Progreso</option><option>Resuelto</option><option>Cerrado</option><option>Reabierto</option>
+                    </select>
+                    <select className="input-text w-full" onChange={e => setPriorityFilter(e.target.value)} value={priorityFilter}>
+                        <option value="Todas">Prioridades</option>
+                        <option>Crítica</option><option>Alta</option><option>Media</option><option>Baja</option>
+                    </select>
+                    <select className="input-text w-full" onChange={e => setAssignedFilter(e.target.value)} value={assignedFilter}>
+                        <option value="Todos">Asignados</option>
+                        {allTeamMembers.map(p => <option key={p.user_id} value={p.user_id}>{p.nombre_completo}</option>)}
+                    </select>
+                </div>
+            </div>
+
+            {loading ? (
+                <div className="space-y-4">{[...Array(3)].map((_, i) => <div key={i} className="bg-white p-4 rounded-lg shadow-sm border border-slate-100 h-20 animate-pulse"></div>)}</div>
+            ) : filteredBugs.length > 0 ? (
+                <div className="space-y-4">
+                    {filteredBugs.map(bug => <BugRow key={bug.id} bug={bug} assignedUser={profilesMap[bug.asignado_a]} />)}
+                </div>
+            ) : (
+                <div className="text-center bg-white p-12 rounded-lg shadow-sm border border-slate-100">
+                    <FaBug className="mx-auto text-5xl text-slate-300" />
+                    <h3 className="mt-6 text-lg font-bold text-slate-700">¡Todo en orden!</h3>
+                    <p className="mt-1 text-slate-500">No hay bugs que coincidan con tus filtros, o este proyecto aún no tiene ninguno.</p>
+                </div>
+            )}
+        </div>
     </div>
   );
 };

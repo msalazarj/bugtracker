@@ -1,185 +1,139 @@
 // src/pages/Dashboard/Dashboard.jsx
-import React, { useState, useEffect, useCallback } from 'react';
-import { useAuth } from '../../contexts/AuthContext.jsx';
-import { collection, query, where, getDocs, onSnapshot } from 'firebase/firestore';
-import { db } from '../../firebase';
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '../../contexts/AuthContext';
+import { getDashboardStats } from '../../services/dashboard.js';
+import { Link } from 'react-router-dom';
+import { FaBug, FaFolderOpen, FaTasks, FaCheckCircle, FaExclamationCircle, FaRedo, FaProjectDiagram } from 'react-icons/fa';
+import { getStatusPillClass } from '../../utils/styleHelpers';
 import Tippy from '@tippyjs/react';
 import 'tippy.js/dist/tippy.css';
-import { FaFileDownload, FaSpinner, FaFolderOpen, FaExclamationCircle, FaProjectDiagram } from 'react-icons/fa';
-import * as XLSX from 'xlsx';
 
-const StatCard = ({ title, value, icon, colorClass = 'text-slate-800', bgColorClass = 'bg-slate-50' }) => (
-    <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-start gap-x-6">
-        <div className={`p-4 rounded-xl ${bgColorClass}`}>{icon}</div>
-        <div>
-            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">{title}</h3>
-            <p className={`text-4xl font-bold mt-2 ${colorClass}`}>{value}</p>
+// --- Componente: Tarjeta de Estadísticas Globales ---
+const StatCard = ({ icon, title, value, color, loading }) => {
+    if (loading) {
+        return <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-100 animate-pulse"><div className="h-8 w-2/3 bg-slate-200 rounded"></div><div className="h-12 w-1/3 bg-slate-200 rounded mt-2"></div></div>;
+    }
+    return (
+        <div className={`bg-white p-5 rounded-xl shadow-sm border border-slate-100 flex items-center gap-5`}>
+            <div className={`w-14 h-14 flex-shrink-0 rounded-lg flex items-center justify-center ${color}`}>
+                {icon}
+            </div>
+            <div>
+                <p className="text-sm font-medium text-slate-500">{title}</p>
+                <p className="text-3xl font-bold text-slate-800">{value}</p>
+            </div>
         </div>
-    </div>
-);
+    );
+};
 
-const LoadingState = () => (
-    <div className="w-full py-24 flex flex-col items-center justify-center text-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
-        <p className="mt-4 text-slate-500 font-medium">Cargando datos del dashboard...</p>
-    </div>
-);
+// --- Componente: Tarjeta de Proyecto Rediseñada ---
+const ProjectCard = ({ project, loading }) => {
+    if (loading) {
+        return <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5 animate-pulse"><div className="h-8 w-8 bg-slate-200 rounded-full mb-4"></div><div className="h-5 w-3/4 bg-slate-200 rounded"></div><div className="flex gap-2 mt-4"><div className="h-5 w-12 bg-slate-200 rounded-full"></div><div className="h-5 w-12 bg-slate-200 rounded-full"></div></div></div>;
+    }
 
-const EmptyState = ({ isAdmin }) => (
-    <div className="text-center bg-white p-12 rounded-2xl shadow-sm border border-slate-100">
-        <div className="w-16 h-16 bg-slate-100 text-slate-400 mx-auto rounded-full flex items-center justify-center mb-5">
-            <FaProjectDiagram className="w-7 h-7" />
-        </div>
-        <h3 className="text-lg font-bold text-slate-800">{isAdmin ? 'No hay proyectos activos' : 'Aún no eres parte de un proyecto'}</h3>
-        <p className="text-slate-500 mt-2 max-w-md mx-auto">
-            {isAdmin ? 'Crea el primer proyecto para empezar a gestionar incidencias.' : 'Para ver tu dashboard, solicita a un administrador que te añada a un proyecto existente.'}
-        </p>
-    </div>
-);
+    const initials = project.nombre.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+    const bugStats = project.bugStats;
 
+    const BugStatusPill = ({ count, status }) => {
+        if (count === 0) return null;
+        return (
+            <Tippy content={`${count} ${status}`} placement="top">
+                <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full ${getStatusPillClass(status)}`}>
+                    <span className="font-bold text-xs">{count}</span>
+                </div>
+            </Tippy>
+        );
+    };
+
+    return (
+        <Link to={`/proyectos/${project.id}/bugs`} className="block bg-white rounded-xl shadow-sm border border-slate-100 p-5 hover:shadow-lg hover:border-indigo-200 transition-all duration-300">
+            <div className="flex items-center gap-4 mb-4">
+                <div className="w-10 h-10 flex-shrink-0 rounded-full bg-indigo-500 text-white flex items-center justify-center font-bold text-lg">
+                    {initials}
+                </div>
+                <h3 className="font-bold text-lg text-slate-800 truncate">{project.nombre}</h3>
+            </div>
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Resumen de Bugs</p>
+            <div className="flex items-center gap-2 flex-wrap">
+                {bugStats.total > 0 ? (
+                    <>
+                        <BugStatusPill count={bugStats.Abierto} status="Abierto" />
+                        <BugStatusPill count={bugStats['En Progreso']} status="En Progreso" />
+                        <BugStatusPill count={bugStats.Resuelto} status="Resuelto" />
+                        <BugStatusPill count={bugStats.Cerrado} status="Cerrado" />
+                        <BugStatusPill count={bugStats.Reabierto} status="Reabierto" />
+                    </>
+                ) : (
+                    <p className="text-sm text-slate-400">No hay bugs en este proyecto.</p>
+                )}
+            </div>
+        </Link>
+    );
+};
+
+// --- Componente Principal del Dashboard ---
 const Dashboard = () => {
-  const { user, profile } = useAuth();
-  const [stats, setStats] = useState({ misBugsAbiertos: 0, misBugsEnProgreso: 0, totalProjects: 0, bugs: { abiertos: 0, enProgreso: 0, resueltos: 0 } });
-  const [isLoading, setIsLoading] = useState(true);
-  const [isDownloading, setIsDownloading] = useState(false);
-  const [rawBugs, setRawBugs] = useState([]);
-
-  const isAdmin = profile?.role === 'Admin';
-
-  const calculateStats = useCallback((bugs, projects) => {
-    setStats({
-      misBugsAbiertos: bugs.filter(b => b.asignado_a_id === user?.uid && b.estado === 'Abierto').length,
-      misBugsEnProgreso: bugs.filter(b => b.asignado_a_id === user?.uid && b.estado === 'En Progreso').length,
-      totalProjects: projects.length,
-      bugs: {
-        abiertos: bugs.filter(b => b.estado === 'Abierto').length,
-        enProgreso: bugs.filter(b => b.estado === 'En Progreso').length,
-        resueltos: bugs.filter(b => b.estado === 'Resuelto').length,
-      },
-    });
-  }, [user?.uid]);
+  const [data, setData] = useState({ stats: { bugs: {} }, projectsWithStats: [] });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const { user } = useAuth();
 
   useEffect(() => {
-    if (!user?.uid || !profile) return;
-
-    setIsLoading(true);
-
-    // **Inicio de la Lógica de Roles**
-    // Si el usuario es Admin, obtiene todos los proyectos. Si no, solo aquellos de los que es miembro.
-    let projectsQuery;
-    if (isAdmin) {
-        projectsQuery = query(collection(db, "projects"));
-    } else {
-        projectsQuery = query(collection(db, "projects"), where("members", "array-contains", user.uid));
-    }
-    // **Fin de la Lógica de Roles**
-
-    const unsubscribe = onSnapshot(projectsQuery, async (projectSnapshot) => {
-      const userProjects = projectSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      
-      if (userProjects.length === 0) {
-        setRawBugs([]);
-        calculateStats([], []);
-        setIsLoading(false);
-        return;
+    const fetchData = async () => {
+      if (!user) return;
+      try {
+        setLoading(true);
+        const dashboardData = await getDashboardStats(user.uid);
+        if (dashboardData.error) {
+            setError(dashboardData.error);
+        } else {
+            setData(dashboardData);
+        }
+      } catch (err) {
+        setError("Ocurrió un error inesperado al cargar el dashboard.");
+      } finally {
+        setLoading(false);
       }
+    };
+    fetchData();
+  }, [user]);
 
-      const projectIds = userProjects.map(p => p.id).slice(0, 30); 
-      const bugsQuery = query(collection(db, "bugs"), where("proyecto_id", "in", projectIds));
-      
-      // Usamos onSnapshot para bugs también, para reflejar actualizaciones en tiempo real
-      const bugsUnsubscribe = onSnapshot(bugsQuery, (bugsSnapshot) => {
-          const bugsData = bugsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-          setRawBugs(bugsData);
-          calculateStats(bugsData, userProjects);
-          setIsLoading(false);
-      }, (error) => {
-          console.error("Error al cargar incidencias:", error);
-          setIsLoading(false);
-      });
-
-      return () => bugsUnsubscribe(); // Devuelve el unsubscribe de bugs
-
-    }, (error) => {
-      console.error("Error al cargar proyectos:", error);
-      // Si falla la carga de proyectos, mostramos el estado vacío.
-      setRawBugs([]);
-      calculateStats([], []);
-      setIsLoading(false);
-    });
-
-    return () => unsubscribe(); // Devuelve el unsubscribe de proyectos
-  }, [user?.uid, profile, isAdmin, calculateStats]);
-
-  const handleDownloadReport = () => {
-    setIsDownloading(true);
-    try {
-      const dataForReport = rawBugs.map(item => ({
-        "ID": item.id.substring(0, 8),
-        "Título": item.titulo,
-        "Estado": item.estado,
-        "Prioridad": item.prioridad,
-        "Asignado": item.asignado_a_nombre || 'N/A',
-        "Fecha": item.creado_en?.toDate().toLocaleDateString('es-CL') || 'N/A'
-      }));
-      const worksheet = XLSX.utils.json_to_sheet(dataForReport);
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, "Bugs");
-      XLSX.writeFile(workbook, `Reporte_PrimeBug_${new Date().toISOString().split('T')[0]}.xlsx`);
-    } catch (error) {
-      alert('Error al generar el reporte Excel.');
-    } finally {
-      setIsDownloading(false);
-    }
-  };
-  
-  const totalBugs = stats ? stats.bugs.abiertos + stats.bugs.enProgreso + stats.bugs.resueltos : 0;
+  const { stats, projectsWithStats } = data;
 
   return (
     <div className="space-y-8">
-        <div className="flex flex-col sm:flex-row justify-between sm:items-start gap-4">
-            <div>
-                <h1 className="text-3xl font-bold text-slate-800">Bienvenido de nuevo, {profile?.fullName?.split(' ')[0]}</h1>
-                <p className="text-slate-600 mt-1">Aquí tienes un resumen de la actividad de tus proyectos.</p>
-            </div>
-            <button onClick={handleDownloadReport} disabled={isDownloading || rawBugs.length === 0} className="btn-secondary flex items-center justify-center gap-x-2 px-4 py-2 text-sm font-medium whitespace-nowrap">
-                <FaFileDownload /> {isDownloading ? 'Generando...' : 'Exportar Resumen'}
-            </button>
+        <h1 className="text-3xl font-bold text-slate-800">Dashboard</h1>
+
+        {/* Sección de Estadísticas Globales */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-5">
+            <StatCard icon={<FaFolderOpen size={24} />} title="Total Proyectos" value={loading ? '-' : stats.totalProyectos} color="bg-sky-100 text-sky-600" loading={loading} />
+            <StatCard icon={<FaExclamationCircle size={24} />} title="Bugs Abiertos" value={loading ? '-' : stats.bugs.abiertos} color="bg-blue-100 text-blue-600" loading={loading} />
+            <StatCard icon={<FaTasks size={24} />} title="En Progreso" value={loading ? '-' : stats.bugs.enProgreso} color="bg-amber-100 text-amber-600" loading={loading} />
+            <StatCard icon={<FaCheckCircle size={24} />} title="Resueltos" value={loading ? '-' : stats.bugs.resueltos} color="bg-green-100 text-green-600" loading={loading} />
+            <StatCard icon={<FaRedo size={24} />} title="Reabiertos" value={loading ? '-' : stats.bugs.reabiertos} color="bg-red-100 text-red-600" loading={loading} />
         </div>
 
-        {isLoading ? <LoadingState /> : (
-            <>
-                {stats.totalProjects === 0 ? <EmptyState isAdmin={isAdmin} /> : (
-                    <div className="space-y-8">
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            <StatCard title="Mis Pendientes" value={stats.misBugsAbiertos} icon={<FaExclamationCircle className="w-6 h-6 text-blue-500" />} colorClass="text-blue-500" bgColorClass="bg-blue-50" />
-                            <StatCard title="En Progreso" value={stats.misBugsEnProgreso} icon={<FaSpinner className="w-6 h-6 text-amber-500" />} colorClass="text-amber-500" bgColorClass="bg-amber-50" />
-                            <StatCard title="Proyectos Activos" value={stats.totalProjects} icon={<FaFolderOpen className="w-6 h-6 text-emerald-500" />} colorClass="text-emerald-500" bgColorClass="bg-emerald-50" />
-                        </div>
-
-                        <div className="bg-white p-6 sm:p-8 rounded-2xl shadow-sm border border-slate-100">
-                            <h2 className="text-xl font-bold text-slate-800 mb-6">Distribución de Incidencias</h2>
-                            {totalBugs > 0 ? (
-                                <>
-                                <div className="w-full bg-slate-100 rounded-full h-6 flex overflow-hidden shadow-inner">
-                                    <Tippy content={`Abiertos: ${stats.bugs.abiertos}`}><div style={{ width: `${(stats.bugs.abiertos / totalBugs) * 100}%` }} className="bg-blue-500 h-full" /></Tippy>
-                                    <Tippy content={`En Progreso: ${stats.bugs.enProgreso}`}><div style={{ width: `${(stats.bugs.enProgreso / totalBugs) * 100}%` }} className="bg-amber-500 h-full" /></Tippy>
-                                    <Tippy content={`Resueltos: ${stats.bugs.resueltos}`}><div style={{ width: `${(stats.bugs.resueltos / totalBugs) * 100}%` }} className="bg-emerald-500 h-full" /></Tippy>
-                                </div>
-                                <div className="flex flex-wrap gap-x-6 gap-y-3 mt-6 justify-center">
-                                    <div className="flex items-center text-sm font-medium text-slate-600"><span className="w-3 h-3 bg-blue-500 rounded-full mr-2.5" /> Abiertos ({stats.bugs.abiertos})</div>
-                                    <div className="flex items-center text-sm font-medium text-slate-600"><span className="w-3 h-3 bg-amber-500 rounded-full mr-2.5" /> En Progreso ({stats.bugs.enProgreso})</div>
-                                    <div className="flex items-center text-sm font-medium text-slate-600"><span className="w-3 h-3 bg-emerald-500 rounded-full mr-2.5" /> Resueltos ({stats.bugs.resueltos})</div>
-                                </div>
-                                </>
-                            ) : (
-                                <p className="text-center text-slate-500 py-8">¡Felicidades! No hay incidencias activas en tus proyectos.</p>
-                            )}
-                        </div>
-                    </div>
-                )}
-            </>
-        )}
+        {/* Sección de Proyectos */}
+        <div className="space-y-5">
+            <h2 className="text-2xl font-bold text-slate-800">Mis Proyectos</h2>
+            {error && <p className="text-red-500 bg-red-50 p-4 rounded-lg">{error}</p>}
+            {loading ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {[...Array(3)].map((_, i) => <ProjectCard key={i} loading={true} />)}
+                </div>
+            ) : projectsWithStats.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {projectsWithStats.map(project => <ProjectCard key={project.id} project={project} loading={false}/>)}
+                </div>
+            ) : (
+                <div className="text-center bg-white p-12 rounded-xl shadow-sm border border-slate-100">
+                    <FaProjectDiagram className="mx-auto text-5xl text-slate-300" />
+                    <h3 className="mt-6 text-lg font-bold text-slate-700">No estás en ningún proyecto</h3>
+                    <p className="mt-1 text-slate-500">Pide a un administrador que te añada a un proyecto para empezar a colaborar.</p>
+                </div>
+            )}
+        </div>
     </div>
   );
 };

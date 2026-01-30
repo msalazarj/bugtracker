@@ -1,207 +1,122 @@
 // src/pages/Projects/ProjectCreate.jsx
 import React, { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { collection, addDoc, getDocs, query, where, serverTimestamp } from 'firebase/firestore';
+import { useNavigate } from 'react-router-dom';
+import { addDoc, collection, serverTimestamp, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext.jsx';
-import { FaProjectDiagram, FaSave, FaTimes, FaSpinner, FaArrowLeft } from 'react-icons/fa';
-import ReactQuill from 'react-quill';
-import 'react-quill/dist/quill.snow.css';
-
-const FormField = ({ label, children, error }) => (
-    <div>
-        <label className="block text-sm font-semibold text-slate-700 mb-1.5">{label}</label>
-        {children}
-        {error && <p className="text-red-600 text-xs mt-1 font-semibold">{error}</p>}
-    </div>
-);
 
 const ProjectCreate = () => {
     const navigate = useNavigate();
-    const { user } = useAuth();
+    const { user, profile } = useAuth(); // profile contiene el teamId
     
     const [formData, setFormData] = useState({
         nombre: '',
-        sigla_incidencia: '',
         descripcion: '',
-        teamId: '',
-        manager_id: '',
-        fecha_inicio: '',
-        fecha_fin: '',
+        sigla_incidencia: ''
     });
-    const [teams, setTeams] = useState([]);
-    const [teamMembers, setTeamMembers] = useState([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [error, setError] = useState(null);
-    const [formErrors, setFormErrors] = useState({});
 
-    // 1. Cargar equipos del usuario (CORREGIDO)
-    useEffect(() => {
-        const loadUserTeams = async () => {
-            if (!user) return;
-            setIsLoading(true);
-            try {
-                // Consulta corregida para usar array-contains
-                const teamsQuery = query(collection(db, 'teams'), where('members', 'array-contains', user.uid));
-                const querySnapshot = await getDocs(teamsQuery);
-                const userTeams = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                setTeams(userTeams);
-            } catch (err) {
-                console.error("Error al cargar equipos:", err);
-                setError("No se pudieron cargar tus equipos.");
-            }
-            setIsLoading(false);
-        };
-        loadUserTeams();
-    }, [user]);
-
-    // 2. Extraer miembros del equipo seleccionado (REFACTORIZADO Y CORREGIDO)
-    useEffect(() => {
-        if (!formData.teamId) {
-            setTeamMembers([]);
-            setFormData(prev => ({ ...prev, manager_id: '' }));
-            return;
-        }
-        const selectedTeam = teams.find(t => t.id === formData.teamId);
-        if (selectedTeam && selectedTeam.members_roles) {
-            // Extraer miembros del mapa `members_roles` (eficiente)
-            const members = Object.entries(selectedTeam.members_roles).map(([uid, data]) => ({ 
-                id: uid, 
-                nombre_completo: data.displayName 
-            }));
-            setTeamMembers(members);
-        } else {
-            setTeamMembers([]);
-        }
-    }, [formData.teamId, teams]);
-
-    const handleChange = (name, value) => {
-        let processedValue = value;
-        if (name === 'sigla_incidencia') {
-            processedValue = value.toUpperCase().replace(/\s+/g, '').slice(0, 6);
-        }
-        setFormData(prev => ({ ...prev, [name]: processedValue }));
-    };
-
-    const validateForm = () => {
-        const errors = {};
-        if (!formData.nombre.trim()) errors.nombre = "El nombre es obligatorio.";
-        if (!formData.sigla_incidencia.trim()) errors.sigla_incidencia = "La sigla es obligatoria.";
-        if (!formData.teamId) errors.teamId = "Debes seleccionar un equipo.";
-        if (formData.fecha_inicio && formData.fecha_fin && new Date(formData.fecha_fin) < new Date(formData.fecha_inicio)) {
-            errors.fecha_fin = "La fecha límite no puede ser anterior a la de inicio.";
-        }
-        setFormErrors(errors);
-        return Object.keys(errors).length === 0;
+    const handleChange = (e) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({ ...prev, [name]: value }));
     };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if (!validateForm() || !user) {
-            if (!user) setError("Tu sesión ha expirado.");
+        if (!formData.nombre || !formData.sigla_incidencia) {
+            setError('El nombre del proyecto y la sigla son obligatorios.');
+            return;
+        }
+
+        if (!profile?.teamId) {
+            setError('No estás asignado a ningún equipo. No puedes crear proyectos.');
             return;
         }
 
         setIsSubmitting(true);
-        setError(null);
+        setError('');
 
         try {
-            const selectedTeam = teams.find(t => t.id === formData.teamId);
-            const managerProfile = teamMembers.find(m => m.id === formData.manager_id);
-
-            await addDoc(collection(db, "projects"), {
+            await addDoc(collection(db, 'projects'), {
                 ...formData,
-                descripcion: formData.descripcion || '',
-                estado: 'Planeado',
-                ownerId: user.uid,
-                members: selectedTeam.members, // 3. Asignación correcta de miembros (CORREGIDO)
-                manager_nombre: managerProfile?.nombre_completo || 'Sin asignar',
+                teamId: profile.teamId, // Asignar el teamId del perfil del usuario
+                ownerId: user.uid,       // El creador es el dueño
                 creado_en: serverTimestamp(),
-                actualizado_en: serverTimestamp(),
+                // CORRECCIÓN: Añadir al creador como miembro y Manager por defecto
+                members: {
+                    [user.uid]: { role: 'Manager' }
+                }
             });
-
             navigate('/proyectos');
         } catch (err) {
             console.error("Error al crear proyecto:", err);
-            setError(`Error al guardar: ${err.message}`);
+            setError('Hubo un problema al crear el proyecto.');
         } finally {
             setIsSubmitting(false);
         }
     };
-    
-    if (isLoading) return <div className="text-center p-10"><FaSpinner className="animate-spin text-4xl text-indigo-600 mx-auto" /></div>;
 
     return (
-        <div className="max-w-4xl mx-auto my-8">
-            <div className="mb-6">
-                <Link to="/proyectos" className="flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-indigo-600 transition-colors">
-                    <FaArrowLeft />
-                    Volver a Proyectos
-                </Link>
-            </div>
+        <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 max-w-2xl mx-auto">
+            <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight mb-3">Crear Nuevo Proyecto</h1>
+            <p className="text-slate-500 mb-8">Completa los detalles a continuación para iniciar un nuevo proyecto.</p>
+            
+            <form onSubmit={handleSubmit} className="space-y-6">
+                <div>
+                    <label htmlFor="nombre" className="label">Nombre del Proyecto</label>
+                    <input 
+                        id="nombre" 
+                        name="nombre" 
+                        type="text" 
+                        value={formData.nombre} 
+                        onChange={handleChange} 
+                        className="input"
+                        placeholder="Ej: Sistema de Gestión de Clientes"
+                        required 
+                    />
+                </div>
 
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-100">
-                <header className="px-6 py-5 border-b border-slate-200 flex items-center gap-4">
-                    <div className="w-12 h-12 bg-slate-100 rounded-lg flex items-center justify-center">
-                        <FaProjectDiagram className="text-indigo-500 w-6 h-6" />
-                    </div>
-                    <div>
-                        <h1 className="text-xl font-bold text-slate-800">Crear Nuevo Proyecto</h1>
-                        <p className="text-sm text-slate-500">Completa los detalles para iniciar un nuevo proyecto.</p>
-                    </div>
-                </header>
+                <div>
+                    <label htmlFor="sigla_incidencia" className="label">Sigla de Incidencia</label>
+                    <input 
+                        id="sigla_incidencia" 
+                        name="sigla_incidencia" 
+                        type="text" 
+                        value={formData.sigla_incidencia} 
+                        onChange={handleChange} 
+                        className="input"
+                        placeholder="Ej: SGC"
+                        maxLength="5"
+                        required 
+                    />
+                    <p className="form-hint">Un identificador corto (máx. 5 letras) para los tickets de este proyecto.</p>
+                </div>
 
-                <form onSubmit={handleSubmit}>
-                    <div className="p-6 sm:p-8 space-y-6">
-                        {error && <div className="bg-red-100 p-4 rounded-lg text-sm text-red-800">{error}</div>}
-                        
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <FormField label="Nombre del Proyecto" error={formErrors.nombre}>
-                                <input type="text" value={formData.nombre} onChange={e => handleChange('nombre', e.target.value)} className="input-text w-full" placeholder="Ej: Plataforma E-commerce" />
-                            </FormField>
-                            <FormField label="Sigla para Tickets (max 6)" error={formErrors.sigla_incidencia}>
-                                <input type="text" value={formData.sigla_incidencia} onChange={e => handleChange('sigla_incidencia', e.target.value)} className="input-text w-full" placeholder="ECOMM" />
-                            </FormField>
-                        </div>
-                        
-                        <FormField label="Descripción del Proyecto">
-                            <ReactQuill theme="snow" value={formData.descripcion} onChange={value => handleChange('descripcion', value)} className="bg-white" />
-                        </FormField>
+                <div>
+                    <label htmlFor="descripcion" className="label">Descripción</label>
+                    <textarea 
+                        id="descripcion" 
+                        name="descripcion" 
+                        rows="4" 
+                        value={formData.descripcion} 
+                        onChange={handleChange} 
+                        className="input"
+                        placeholder="Describe brevemente el objetivo y alcance del proyecto."
+                    />
+                </div>
+                
+                {error && <p className="text-sm text-red-600 bg-red-50 p-3 rounded-lg">{error}</p>}
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-6 border-t border-slate-200">
-                             <FormField label="Equipo Responsable" error={formErrors.teamId}>
-                                <select value={formData.teamId} onChange={e => handleChange('teamId', e.target.value)} className="input-text w-full">
-                                    <option value="">-- Selecciona un equipo --</option>
-                                    {teams.map(team => <option key={team.id} value={team.id}>{team.nombre}</option>)}
-                                </select>
-                            </FormField>
-                            <FormField label="Project Manager">
-                                <select value={formData.manager_id} onChange={e => handleChange('manager_id', e.target.value)} className="input-text w-full" disabled={!formData.teamId}>
-                                    <option value="">-- Asignar un manager --</option>
-                                    {teamMembers.map(member => <option key={member.id} value={member.id}>{member.nombre_completo}</option>)}
-                                </select>
-                            </FormField>
-                            <FormField label="Fecha de Inicio">
-                                <input type="date" value={formData.fecha_inicio} onChange={e => handleChange('fecha_inicio', e.target.value)} className="input-text w-full" />
-                            </FormField>
-                            <FormField label="Fecha Límite" error={formErrors.fecha_fin}>
-                                <input type="date" value={formData.fecha_fin} onChange={e => handleChange('fecha_fin', e.target.value)} className="input-text w-full" />
-                            </FormField>
-                        </div>
-                    </div>
-
-                    <footer className="flex justify-end items-center px-6 sm:px-8 py-4 bg-slate-50/70 border-t border-slate-200 gap-x-3">
-                        <button type="button" onClick={() => navigate('/proyectos')} className="btn-secondary px-4 py-2 text-sm font-medium">
-                            Cancelar
-                        </button>
-                        <button type="submit" disabled={isSubmitting} className="btn-primary flex items-center justify-center gap-x-2 px-4 py-2 text-sm font-medium">
-                            {isSubmitting ? <FaSpinner className="animate-spin" /> : <FaSave />}
-                            {isSubmitting ? 'Creando...' : 'Guardar Proyecto'}
-                        </button>
-                    </footer>
-                </form>
-            </div>
+                <div className="flex items-center justify-end gap-4 pt-4">
+                    <button type="button" onClick={() => navigate('/proyectos')} className="btn-secondary">
+                        Cancelar
+                    </button>
+                    <button type="submit" disabled={isSubmitting} className="btn-primary">
+                        {isSubmitting ? 'Creando Proyecto...' : 'Crear Proyecto'}
+                    </button>
+                </div>
+            </form>
         </div>
     );
 };

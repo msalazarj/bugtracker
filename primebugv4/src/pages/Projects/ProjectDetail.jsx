@@ -1,95 +1,128 @@
 // src/pages/Projects/ProjectDetail.jsx
 import React, { useState, useEffect } from 'react';
-import { useParams, Outlet, NavLink, Link, useLocation } from 'react-router-dom';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { useParams, Link } from 'react-router-dom';
+import { doc, onSnapshot, collection, query, where } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext.jsx';
-import { FaUserPlus, FaBug, FaUsers, FaExclamationCircle, FaCalendarAlt, FaUserTie } from 'react-icons/fa';
-import Tippy from '@tippyjs/react';
+import { 
+    FaUsers, FaFileAlt, FaEdit, FaExclamationCircle, 
+    FaTasks, FaCheckCircle, FaRedo, FaLock 
+} from 'react-icons/fa';
 
-const ProjectDetailSkeleton = () => (
-  <div className="animate-pulse">
-    <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-      <div className="h-8 bg-slate-200 rounded w-1/2 mb-4"></div>
-      <div className="h-5 bg-slate-200 rounded w-3/4 mb-6"></div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-        <div className="h-24 bg-slate-200 rounded-xl"></div>
-        <div className="h-24 bg-slate-200 rounded-xl"></div>
-        <div className="h-24 bg-slate-200 rounded-xl"></div>
-        <div className="h-24 bg-slate-200 rounded-xl"></div>
-      </div>
-    </div>
-    <div className="mt-8 h-14 bg-slate-200 rounded-lg w-full"></div>
-  </div>
-);
+// --- Componente: Tarjeta de Acción del Proyecto ---
+const ActionCard = ({ to, icon, title, description, badgeText, badgeColor, loading }) => {
+    if (loading) {
+        return <div className="bg-slate-200 rounded-xl h-40 animate-pulse"></div>;
+    }
+    return (
+        <Link to={to} className="block bg-white p-6 rounded-2xl shadow-sm border border-slate-100 hover:shadow-lg hover:border-indigo-300 transition-all duration-300 group">
+            <div className="flex justify-between items-start">
+                <div className={`p-3 rounded-lg ${badgeColor}`}>
+                    {icon}
+                </div>
+                {badgeText && <span className="text-xs font-bold bg-slate-100 text-slate-600 px-2 py-1 rounded-full">{badgeText}</span>}
+            </div>
+            <div className="mt-4">
+                <h3 className="text-lg font-bold text-slate-800 group-hover:text-indigo-600">{title}</h3>
+                <p className="text-sm text-slate-500 mt-1 line-clamp-2">{description}</p>
+            </div>
+        </Link>
+    );
+};
 
-const StatCard = ({ icon, label, value, color }) => (
-  <div className={`bg-slate-50/50 p-5 rounded-xl border-l-4 ${color}`}>
-    <div className="flex items-center">
-      <div className="mr-4 text-2xl text-slate-500">{icon}</div>
-      <div>
-        <p className="text-sm font-bold text-slate-500 uppercase tracking-wider">{label}</p>
-        <div className="text-2xl font-extrabold text-slate-800">{value}</div>
-      </div>
-    </div>
-  </div>
-);
+// --- Componente: Tarjeta de Resumen de Bugs por Estado ---
+const BugStatusCard = ({ to, icon, title, value, colorClass, loading }) => {
+    if (loading) {
+        return <div className="bg-slate-200 rounded-xl h-24 animate-pulse"></div>
+    }
+    return (
+        <Link to={to} className={`block bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex items-center gap-4 hover:shadow-md hover:border-${colorClass}-300 transition-all`}>
+            <div className={`w-12 h-12 flex-shrink-0 rounded-lg flex items-center justify-center bg-${colorClass}-100 text-${colorClass}-600`}>
+                {icon}
+            </div>
+            <div>
+                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">{title}</p>
+                <p className="text-3xl font-bold text-slate-800">{value}</p>
+            </div>
+        </Link>
+    )
+}
 
 const ProjectDetail = () => {
   const { projectId } = useParams();
-  const location = useLocation();
   const { user } = useAuth();
   
+  // Estados del componente
   const [project, setProject] = useState(null);
+  const [bugStats, setBugStats] = useState({ abiertos: 0, enProgreso: 0, resueltos: 0, cerrados: 0, reabiertos: 0 });
   const [loading, setLoading] = useState(true);
   const [accessDenied, setAccessDenied] = useState(false);
 
+  // Efecto para cargar datos del proyecto
   useEffect(() => {
     if (!user || !projectId) return;
-    setLoading(true);
 
     const projectRef = doc(db, "projects", projectId);
-
     const unsubscribe = onSnapshot(projectRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const projectData = docSnap.data();
-
-        if (projectData.members && projectData.members.includes(user.uid)) {
-          setProject({ id: docSnap.id, ...projectData });
-          setAccessDenied(false);
-        } else {
-          setAccessDenied(true);
-          setProject(null);
-        }
+      if (docSnap.exists() && docSnap.data().members?.includes(user.uid)) {
+        setProject({ id: docSnap.id, ...docSnap.data() });
+        setAccessDenied(false);
       } else {
         setAccessDenied(true);
         setProject(null);
       }
       setLoading(false);
     }, (error) => {
-      console.error("Error al cargar proyecto:", error.message);
-      setLoading(false);
+      console.error("Error al cargar proyecto:", error);
       setAccessDenied(true);
+      setLoading(false);
     });
 
     return () => unsubscribe();
   }, [projectId, user]);
 
-  const getDaysRemaining = () => {
-    // BUG CORREGIDO: Usar `fecha_fin` en lugar de `deadline`
-    if (!project?.fecha_fin) return null;
-    const today = new Date();
-    const deadlineDate = new Date(project.fecha_fin);
-    const diffTime = deadlineDate.getTime() - today.getTime();
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  };
-  const daysRemaining = getDaysRemaining();
+  // Efecto para cargar estadísticas de bugs (MÁS COMPLETO)
+  useEffect(() => {
+    if (!projectId) return;
 
-  const navLinkClasses = "px-4 py-3 text-sm font-bold text-slate-500 border-b-2 border-transparent hover:border-indigo-500 hover:text-slate-800 transition-all whitespace-nowrap";
-  const activeNavLinkClasses = "border-indigo-500 text-indigo-600 bg-indigo-50 rounded-t-lg";
+    const bugsQuery = query(collection(db, "bugs"), where("proyecto_id", "==", projectId));
+    
+    const unsubscribeBugs = onSnapshot(bugsQuery, (snapshot) => {
+        let stats = { abiertos: 0, enProgreso: 0, resueltos: 0, cerrados: 0, reabiertos: 0 };
+        snapshot.forEach(doc => {
+            const bug = doc.data();
+            if (bug.estado === 'Abierto') stats.abiertos++;
+            if (bug.estado === 'En Progreso') stats.enProgreso++;
+            if (bug.estado === 'Resuelto') stats.resueltos++;
+            if (bug.estado === 'Cerrado') stats.cerrados++;
+            if (bug.estado === 'Reabierto') stats.reabiertos++;
+        });
+        setBugStats(stats);
+    });
 
+    return () => unsubscribeBugs();
+  }, [projectId]);
+
+
+  // --- Renderizado de Estados ---
   if (loading) {
-    return <ProjectDetailSkeleton />;
+     return (
+       <div className="animate-pulse space-y-8">
+         <div className="h-16 w-3/4 bg-slate-200 rounded-lg mb-8"></div>
+         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="h-40 bg-slate-200 rounded-xl"></div>
+            <div className="h-40 bg-slate-200 rounded-xl"></div>
+         </div>
+         <div className="mt-8 h-8 w-1/4 bg-slate-200 rounded-lg"></div>
+         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-5">
+            <div className="h-24 bg-slate-200 rounded-xl"></div>
+            <div className="h-24 bg-slate-200 rounded-xl"></div>
+            <div className="h-24 bg-slate-200 rounded-xl"></div>
+            <div className="h-24 bg-slate-200 rounded-xl"></div>
+             <div className="h-24 bg-slate-200 rounded-xl"></div>
+         </div>
+       </div>
+     );
   }
 
   if (accessDenied) {
@@ -102,50 +135,57 @@ const ProjectDetail = () => {
       </div>
     );
   }
+  
+  if (!project) return null;
 
+  // --- Renderizado Principal ---
   return (
     <div className="space-y-8">
-      <header className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-        <div className="flex flex-col sm:flex-row justify-between sm:items-start gap-4">
-            <div className="flex items-center">
-                {/* BUG CORREGIDO: Usar `sigla_incidencia` en lugar de `sigla` */}
-                <div className="w-14 h-14 bg-indigo-100 text-indigo-600 flex items-center justify-center rounded-xl text-2xl font-black mr-5 flex-shrink-0">{project.sigla_incidencia}</div>
+        {/* Cabecera del Proyecto */}
+        <header className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+            <div className="flex flex-col sm:flex-row justify-between sm:items-start gap-4">
                 <div>
-                    <h1 className="text-2xl md:text-3xl font-extrabold text-slate-900">{project.nombre}</h1>
-                    <p className="text-slate-500 mt-1">{project.descripcion}</p>
+                    <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">{project.nombre}</h1>
+                    <p className="text-slate-500 mt-1 max-w-3xl">{project.descripcion.replace(/<p>|<\/p>/g, '')}</p>
                 </div>
+                <Link to={`/proyectos/${projectId}/editar`} className="btn-secondary flex-shrink-0 flex items-center gap-2">
+                    <FaEdit /> Editar Proyecto
+                </Link>
             </div>
-            <div className="flex-shrink-0">
-                 <Tippy content="Gestionar miembros">
-                    <Link to={`/proyectos/${projectId}/miembros`} className="btn-primary inline-flex items-center gap-2 px-4 py-2">
-                        <FaUserPlus/>
-                        <span className="hidden sm:inline">Gestionar</span>
-                    </Link>
-                </Tippy>
-            </div>
+        </header>
+
+        {/* Grilla de Tarjetas de Acción */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <ActionCard 
+                to={`/proyectos/${projectId}/miembros`}
+                icon={<FaUsers className="text-xl text-blue-800"/>}
+                title="Gestionar Miembros"
+                description="Añade, elimina o modifica los roles de los participantes del proyecto."
+                badgeText={`${project.members?.length || 0} Miembros`}
+                badgeColor="bg-blue-100"
+                loading={loading}
+            />
+            <ActionCard 
+                to={`/proyectos/${projectId}/documentacion`}
+                icon={<FaFileAlt className="text-xl text-green-800"/>}
+                title="Documentación"
+                description="Centraliza todos los documentos importantes, guías y recursos del proyecto."
+                badgeColor="bg-green-100"
+                loading={loading}
+            />
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mt-6 pt-6 border-t border-slate-200">
-            <StatCard icon={<FaBug />} label="Bugs Abiertos" value={project.openBugs || 0} color="border-red-400" />
-            <StatCard icon={<FaUsers />} label="Miembros" value={project.members.length} color="border-blue-400" />
-            <StatCard icon={<FaCalendarAlt />} label="Días Restantes" value={daysRemaining !== null ? daysRemaining : 'N/A'} color={daysRemaining < 7 ? "border-yellow-400" : "border-green-400"} />
-            {/* LÓGICA CORREGIDA: Usa `manager_nombre` directo de project. Sin avatares. */}
-            <StatCard icon={<FaUserTie />} label="Project Manager" value={project.manager_nombre?.split(' ')[0] || 'N/A'} color="border-purple-400" />
+        {/* Sección de Resumen de Bugs */}
+        <div>
+            <h2 className="text-2xl font-bold text-slate-800 mb-4">Resumen de Bugs</h2>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-5">
+                <BugStatusCard to={`/proyectos/${projectId}/bugs`} icon={<FaExclamationCircle size={20} />} title="Abiertos" value={bugStats.abiertos} colorClass="blue" loading={loading} />
+                <BugStatusCard to={`/proyectos/${projectId}/bugs`} icon={<FaTasks size={20} />} title="En Progreso" value={bugStats.enProgreso} colorClass="amber" loading={loading} />
+                <BugStatusCard to={`/proyectos/${projectId}/bugs`} icon={<FaCheckCircle size={20} />} title="Resueltos" value={bugStats.resueltos} colorClass="green" loading={loading} />
+                <BugStatusCard to={`/proyectos/${projectId}/bugs`} icon={<FaRedo size={20} />} title="Reabiertos" value={bugStats.reabiertos} colorClass="red" loading={loading} />
+                <BugStatusCard to={`/proyectos/${projectId}/bugs`} icon={<FaLock size={20} />} title="Cerrados" value={bugStats.cerrados} colorClass="slate" loading={loading} />
+            </div>
         </div>
-      </header>
-      
-      <nav className="bg-white rounded-xl shadow-sm border border-slate-100 flex items-center p-2">
-        <NavLink to={`/proyectos/${projectId}/issues`} className={({ isActive }) => `${navLinkClasses} ${isActive || location.pathname === `/proyectos/${projectId}` ? activeNavLinkClasses : ''}`}>
-          Issues / Tareas
-        </NavLink>
-        <NavLink to={`/proyectos/${projectId}/miembros`} className={({ isActive }) => `${navLinkClasses} ${isActive ? activeNavLinkClasses : ''}`}>
-          Miembros
-        </NavLink>
-      </nav>
-
-      <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-100 min-h-[400px]">
-         <Outlet />
-      </div>
     </div>
   );
 };

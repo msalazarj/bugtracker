@@ -1,71 +1,57 @@
 // src/services/dashboard.js
-import { db, auth } from '../firebase';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, getDocs, query, where } from 'firebase/firestore';
+import { db } from '../firebase';
 
 /**
- * Obtiene los proyectos donde el usuario actual es miembro.
+ * Obtiene y procesa las estadísticas del dashboard para un usuario específico.
+ * Calcula estadísticas generales de bugs y también por proyecto.
+ * 
+ * @param {string} userId - El UID del usuario logueado.
+ * @returns {Promise<object>} Un objeto con las estadísticas del dashboard.
  */
-export const fetchUserActiveProjects = async () => {
-  try {
-    const userId = auth.currentUser?.uid;
-    if (!userId) return { success: false, error: "No autenticado" };
-
-    const projectsRef = collection(db, "projects");
-    // Buscamos proyectos donde el ID del usuario esté en el array de miembros
-    // Nota: Para que esto funcione, el array en Firestore debe contener solo IDs de strings 
-    // o debes ajustar la consulta si guardas objetos.
-    const q = query(projectsRef, where("miembros_ids", "array-contains", userId));
-    const querySnapshot = await getDocs(q);
-    
-    const projects = querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      name: doc.data().nombre
-    }));
-
-    return { success: true, data: projects };
-  } catch (error) {
-    console.error("Error al obtener proyectos activos:", error);
-    return { success: false, error };
+export const getDashboardStats = async (userId) => {
+  if (!userId) {
+    return {
+      stats: { bugs: {}, projects: [] },
+      loading: false,
+      error: 'Usuario no autenticado.'
+    };
   }
-};
 
-/**
- * Genera estadísticas globales o por proyecto en tiempo real.
- */
-export const getDashboardStats = async (projectId = 'todos') => {
   try {
-    const userId = auth.currentUser?.uid;
-    const bugsRef = collection(db, "bugs");
-    let q;
+    // 1. Obtener los proyectos donde el usuario es miembro
+    const projectsQuery = query(collection(db, 'projects'), where('members', 'array-contains', userId));
+    const projectsSnapshot = await getDocs(projectsQuery);
+    const userProjects = projectsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const projectIds = userProjects.map(p => p.id);
 
-    // 1. Filtrado de la consulta
-    if (projectId === 'todos') {
-      q = query(bugsRef);
-    } else {
-      q = query(bugsRef, where("proyecto_id", "==", projectId));
+    let allBugs = [];
+    if (projectIds.length > 0) {
+      // 2. Obtener todos los bugs de esos proyectos
+      const bugsQuery = query(collection(db, 'bugs'), where('proyecto_id', 'in', projectIds));
+      const bugsSnapshot = await getDocs(bugsQuery);
+      allBugs = bugsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     }
 
-    const querySnapshot = await getDocs(q);
-    const allBugs = querySnapshot.docs.map(doc => doc.data());
-
-    // 2. Procesamiento de Estadísticas (Agregación en cliente para PoC)
+    // 3. Procesar las estadísticas
     const stats = {
-      misBugsAbiertos: 0,
-      misBugsEnProgreso: 0,
+      totalProyectos: userProjects.length,
       bugs: {
+        total: allBugs.length,
         abiertos: 0,
         enProgreso: 0,
         reabiertos: 0,
         resueltos: 0,
         cerrados: 0,
       },
-      statsPorMiembro: {}, // Usaremos un mapa temporal
-      statsPorProyecto: {}  // Usaremos un mapa temporal
     };
+
+    const statsPorProyecto = {}; // Mapa para acumular stats por proyecto_id
 
     allBugs.forEach(bug => {
       const estado = bug.estado;
-      
+      const proyectoId = bug.proyecto_id;
+
       // Conteo General
       if (estado === 'Abierto') stats.bugs.abiertos++;
       if (estado === 'En Progreso') stats.bugs.enProgreso++;
@@ -73,33 +59,33 @@ export const getDashboardStats = async (projectId = 'todos') => {
       if (estado === 'Resuelto') stats.bugs.resueltos++;
       if (estado === 'Cerrado') stats.bugs.cerrados++;
 
-      // Estadísticas Personales
-      if (bug.asignado_a_id === userId) {
-        if (estado === 'Abierto') stats.misBugsAbiertos++;
-        if (estado === 'En Progreso') stats.misBugsEnProgreso++;
+      // Inicializar contador para el proyecto si no existe
+      if (!statsPorProyecto[proyectoId]) {
+          statsPorProyecto[proyectoId] = { total: 0, Abierto: 0, 'En Progreso': 0, Resuelto: 0, Cerrado: 0, Reabierto: 0 };
       }
 
-      // Agregación por Miembro (Denormalizado)
-      if (bug.asignado_a_nombre) {
-        if (!stats.statsPorMiembro[bug.asignado_a_nombre]) {
-          stats.statsPorMiembro[bug.asignado_a_nombre] = { nombre: bug.asignado_a_nombre, abiertos: 0, resueltos: 0 };
-        }
-        if (estado === 'Abierto') stats.statsPorMiembro[bug.asignado_a_nombre].abiertos++;
-        if (estado === 'Resuelto') stats.statsPorMiembro[bug.asignado_a_nombre].resueltos++;
+      // Conteo por Proyecto
+      statsPorProyecto[proyectoId].total++;
+      if (estado && statsPorProyecto[proyectoId].hasOwnProperty(estado)) {
+          statsPorProyecto[proyectoId][estado]++;
       }
     });
 
-    // Convertir mapas a arrays para el componente UI
-    const finalStats = {
-      ...stats,
-      statsPorMiembro: Object.values(stats.statsPorMiembro),
-      statsPorProyecto: [] // Aquí podrías hacer un mapeo similar por proyecto
-    };
+    // 4. Combinar los datos del proyecto con sus estadísticas de bugs
+    const projectsWithStats = userProjects.map(project => ({
+        ...project,
+        bugStats: statsPorProyecto[project.id] || { total: 0, Abierto: 0, 'En Progreso': 0, Resuelto: 0, Cerrado: 0, Reabierto: 0 },
+    }));
 
-    return { success: true, data: finalStats };
+    return { stats, projectsWithStats, loading: false, error: null };
 
   } catch (error) {
-    console.error("Error al obtener estadísticas del Dashboard:", error);
-    return { success: false, error };
+    console.error("Error obteniendo estadísticas del dashboard:", error);
+    return {
+      stats: { bugs: {}, projects: [] },
+      projectsWithStats: [],
+      loading: false,
+      error: 'No se pudieron cargar los datos del dashboard.'
+    };
   }
 };

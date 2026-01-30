@@ -6,58 +6,77 @@ import { useAuth } from '../../contexts/AuthContext.jsx';
 import { Link } from 'react-router-dom';
 import { FaPlus, FaUsers, FaFolder } from 'react-icons/fa';
 
-// Skeleton Loader para las tarjetas
+// --- Skeleton Loader para las tarjetas ---
 const CardSkeleton = () => (
-    <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 animate-pulse">
-        <div className="h-6 bg-slate-200 rounded w-3/4 mb-3"></div>
-        <div className="h-4 bg-slate-200 rounded w-1/2 mb-6"></div>
+    <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-100 animate-pulse">
+        <div className="h-5 bg-slate-200 rounded w-3/4 mb-4"></div>
         <div className="flex items-center justify-between">
-            <div className="flex -space-x-2">
-                <div className="w-8 h-8 bg-slate-200 rounded-full border-2 border-white"></div>
-                <div className="w-8 h-8 bg-slate-200 rounded-full border-2 border-white"></div>
+            <div className="flex -space-x-3">
+                <div className="w-9 h-9 bg-slate-200 rounded-full ring-2 ring-white"></div>
+                <div className="w-9 h-9 bg-slate-200 rounded-full ring-2 ring-white"></div>
+                <div className="w-9 h-9 bg-slate-200 rounded-full ring-2 ring-white"></div>
             </div>
-            <div className="h-5 bg-slate-200 rounded w-1/4"></div>
+            <div className="flex gap-x-4">
+                <div className="h-5 w-8 bg-slate-200 rounded"></div>
+                <div className="h-5 w-8 bg-slate-200 rounded"></div>
+            </div>
         </div>
     </div>
 );
 
-// Tarjeta de Equipo Rediseñada
+// --- Helper para obtener iniciales de un nombre ---
+const getInitials = (name) => {
+    if (!name) return '?';
+    const parts = name.trim().split(' ').filter(Boolean);
+    if (parts.length > 1) {
+        return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    }
+    return (parts[0]?.[0] || '').toUpperCase();
+};
+
+// --- Tarjeta de Equipo Rediseñada ---
 const TeamCard = ({ team }) => {
-    const memberCount = team.members?.length || 0;
-    // Simulación de avatares. En una app real, aquí irían las URLs de las imágenes.
-    const avatars = Array(Math.min(memberCount, 3)).fill(0);
+    const members = Object.values(team.members_roles || {});
+    const memberCount = members.length;
+    const projectCount = team.projects?.length || 0;
+    const displayedMembers = members.slice(0, 3);
 
     return (
-        <Link to={`/equipos/${team.id}`} className="block bg-white p-6 rounded-2xl shadow-sm border border-slate-100 hover:shadow-lg hover:-translate-y-1 transition-all duration-300">
-            <h3 className="font-bold text-lg text-slate-800 truncate">{team.nombre}</h3>
+        <Link to={`/equipos/${team.id}`} className="block bg-white p-5 rounded-xl shadow-sm border border-transparent transition-all duration-300 hover:shadow-lg hover:-translate-y-1 hover:border-indigo-400">
+            <h3 className="font-bold text-slate-800 truncate text-md mb-4">{team.nombre}</h3>
             
-            <div className="flex items-center justify-between mt-4">
-                {/* Avatar Stack */}
-                <div className="flex items-center">
-                    <div className="flex -space-x-2 overflow-hidden">
-                        {avatars.map((_, index) => (
-                            <div key={index} className="inline-block h-8 w-8 rounded-full ring-2 ring-white bg-slate-200 flex items-center justify-center text-xs font-bold text-slate-500">{/* Podría ser una imagen */}</div>
+            <div className="flex items-center justify-between">
+                <div className="flex items-center" title={`${memberCount} miembros`}>
+                    <div className="flex -space-x-3 overflow-hidden">
+                        {displayedMembers.map((member, index) => (
+                            <div key={member.email || index} title={member.displayName} className="inline-flex items-center justify-center h-9 w-9 rounded-full ring-2 ring-white bg-indigo-100 text-indigo-600 font-bold text-xs">
+                                {getInitials(member.displayName)}
+                            </div>
                         ))}
+                         {memberCount === 0 && (
+                            <div className="inline-flex items-center justify-center h-9 w-9 rounded-full ring-2 ring-white bg-slate-100 text-slate-400 font-bold text-xs">
+                                <FaUsers />
+                            </div>
+                         )}
                     </div>
-                    {memberCount > 3 && <span className="pl-2 text-sm font-medium text-slate-500">+{memberCount - 3}</span>}
+                    {memberCount > 3 && <span className="pl-3 text-sm font-medium text-slate-500">+{memberCount - 3}</span>}
                 </div>
 
-                {/* Stats */}
-                <div className="flex gap-x-4 text-sm">
-                    <div className="flex items-center gap-x-1.5 text-slate-500">
+                <div className="flex gap-x-4 text-sm font-medium">
+                    <div className="flex items-center gap-x-1.5 text-slate-500" title={`${memberCount} Miembros`}>
                         <FaUsers className="text-slate-400" />
-                        <span className="font-medium">{memberCount}</span>
+                        <span>{memberCount}</span>
                     </div>
-                    {/* El conteo de proyectos podría venir de otra consulta */}
-                    {/* <div className="flex items-center gap-x-1.5 text-slate-500">
+                    <div className="flex items-center gap-x-1.5 text-slate-500" title={`${projectCount} Proyectos`}>
                         <FaFolder className="text-slate-400" />
-                        <span className="font-medium">{team.projectCount || 0}</span>
-                    </div> */}
+                        <span>{projectCount}</span>
+                    </div>
                 </div>
             </div>
         </Link>
     );
 };
+
 
 const TeamList = () => {
   const [teams, setTeams] = useState([]);
@@ -90,11 +109,11 @@ const TeamList = () => {
         </div>
 
         {loading ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                {[...Array(4)].map((_, i) => <CardSkeleton key={i} />)}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                {[...Array(3)].map((_, i) => <CardSkeleton key={i} />)}
             </div>
         ) : teams.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                 {teams.map(team => <TeamCard key={team.id} team={team} />)}
             </div>
         ) : (

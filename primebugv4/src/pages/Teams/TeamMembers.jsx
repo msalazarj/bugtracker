@@ -1,10 +1,17 @@
 // src/pages/Teams/TeamMembers.jsx
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { doc, onSnapshot, updateDoc, arrayUnion, arrayRemove, query, collection, where, getDocs, writeBatch } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc, arrayUnion, arrayRemove, query, collection, where, getDocs, deleteField } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext.jsx';
-import { FaUsers, FaPlus, FaTrash, FaShieldAlt, FaSpinner, FaArrowLeft } from 'react-icons/fa';
+import { FaUsers, FaPlus, FaTrash, FaSpinner, FaArrowLeft } from 'react-icons/fa';
+
+// Paleta de roles con un diseño moderno y colores distintivos
+const roleDisplay = {
+    Owner:  { label: 'Administrador', className: 'bg-amber-100 text-amber-800 border-amber-200' },
+    Admin:  { label: 'Admin',         className: 'bg-indigo-100 text-indigo-800 border-indigo-200' },
+    Member: { label: 'Usuario',       className: 'bg-slate-100 text-slate-700 border-slate-200' }
+};
 
 const TeamMembers = () => {
     const { teamId } = useParams();
@@ -16,7 +23,6 @@ const TeamMembers = () => {
     const [currentUserRole, setCurrentUserRole] = useState(null);
 
     const [inviteEmail, setInviteEmail] = useState('');
-    const [selectedRole, setSelectedRole] = useState('Member');
     const [isInviting, setIsInviting] = useState(false);
     const [inviteError, setInviteError] = useState('');
 
@@ -66,35 +72,20 @@ const TeamMembers = () => {
             if (team.members.includes(userIdToAdd)) throw new Error("Este usuario ya es miembro del equipo.");
 
             const teamRef = doc(db, 'teams', teamId);
-            const batch = writeBatch(db);
-            batch.update(teamRef, {
+            await updateDoc(teamRef, {
                 members: arrayUnion(userIdToAdd),
                 [`members_roles.${userIdToAdd}`]: {
-                    role: selectedRole,
+                    role: 'Member',
                     displayName: userToAdd.data().nombre_completo,
                     email: userToAdd.data().email
                 }
             });
-            await batch.commit();
 
             setInviteEmail('');
-            setSelectedRole('Member');
         } catch (err) {
             setInviteError(err.message);
         } finally {
             setIsInviting(false);
-        }
-    };
-    
-    const handleUpdateRole = async (memberUid, newRole) => {
-        if (currentUserRole !== 'Owner' && currentUserRole !== 'Admin') return;
-        try {
-            const teamRef = doc(db, 'teams', teamId);
-            await updateDoc(teamRef, {
-                [`members_roles.${memberUid}.role`]: newRole
-            });
-        } catch (err) {
-            console.error("Error actualizando el rol:", err);
         }
     };
 
@@ -104,15 +95,11 @@ const TeamMembers = () => {
         if (window.confirm("¿Estás seguro de que quieres eliminar a este miembro del equipo?")) {
             try {
                 const teamRef = doc(db, 'teams', teamId);
-                const batch = writeBatch(db);
-                const updatedRoles = { ...team.members_roles };
-                delete updatedRoles[memberUid];
-
-                batch.update(teamRef, {
+                const memberRolePath = `members_roles.${memberUid}`;
+                await updateDoc(teamRef, {
                     members: arrayRemove(memberUid),
-                    members_roles: updatedRoles
+                    [memberRolePath]: deleteField()
                 });
-                await batch.commit();
             } catch (err) {
                 console.error("Error al eliminar miembro:", err);
             }
@@ -122,7 +109,7 @@ const TeamMembers = () => {
     if (loading) return <div className="flex justify-center items-center py-20"><FaSpinner className="animate-spin text-4xl text-indigo-500"/></div>;
     if (error) return <div className="text-center py-10 text-red-600 bg-red-50 rounded-lg">{error}</div>;
 
-    const canManage = currentUserRole === 'Owner' || currentUserRole === 'Admin';
+    const canManageMembers = currentUserRole === 'Owner' || currentUserRole === 'Admin';
 
     return (
         <div className="max-w-5xl mx-auto space-y-8">
@@ -137,28 +124,20 @@ const TeamMembers = () => {
                     </div>
                     <div>
                         <h1 className="text-3xl font-bold text-slate-800">Gestionar Miembros</h1>
-                        <p className="text-slate-500 mt-1">Añade, elimina o cambia los roles de los miembros del equipo "{team.nombre}".</p>
+                        <p className="text-slate-500 mt-1">Añade o elimina miembros del equipo "{team.nombre}".</p>
                     </div>
                 </div>
             </div>
 
-            {canManage && (
+            {canManageMembers && (
                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                    <h2 className="font-bold text-lg text-slate-800 mb-4">Invitar Nuevo Miembro</h2>
-                    <form onSubmit={handleAddMember} className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-start">
-                        <div className="sm:col-span-2">
-                             <input type="email" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} placeholder="Email del nuevo miembro" className="input-text w-full" required />
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <select value={selectedRole} onChange={(e) => setSelectedRole(e.target.value)} className="input-text"> 
-                                <option value="Member">Miembro</option>
-                                <option value="Admin">Admin</option>
-                            </select>
-                            <button type="submit" disabled={isInviting} className="btn-primary whitespace-nowrap px-4 py-2 flex items-center justify-center gap-2">
-                                {isInviting ? <FaSpinner className="animate-spin"/> : <FaPlus/>}
-                                {isInviting ? 'Invitando...' : 'Invitar'}
-                            </button>
-                        </div>
+                    <h2 className="font-bold text-lg text-slate-800 mb-4">Agregar Nuevo Miembro</h2>
+                    <form onSubmit={handleAddMember} className="flex flex-col sm:flex-row gap-4 items-start">
+                        <input type="email" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} placeholder="Email del nuevo miembro" className="input-text w-full flex-grow" required />
+                        <button type="submit" disabled={isInviting} className="btn-primary whitespace-nowrap px-4 py-2 flex items-center justify-center gap-2 w-full sm:w-auto">
+                            {isInviting ? <FaSpinner className="animate-spin"/> : <FaPlus/>}
+                            {isInviting ? 'Agregando...' : 'Agregar'}
+                        </button>
                     </form>
                     {inviteError && <p className="text-sm text-red-600 mt-3 font-medium">{inviteError}</p>}
                  </div>
@@ -179,16 +158,11 @@ const TeamMembers = () => {
                                  </div>
                             </div>
                             <div className="flex items-center gap-3 self-end sm:self-center">
-                                {canManage && member.role !== 'Owner' ? (
-                                    <select value={member.role} onChange={(e) => handleUpdateRole(member.uid, e.target.value)} className="input-text text-sm font-medium border-slate-300 py-1.5">
-                                        <option value="Member">Miembro</option>
-                                        <option value="Admin">Admin</option>
-                                    </select>
-                                ) : (
-                                     <span className={`text-sm font-medium px-3 py-1.5 rounded-full border ${member.role === 'Owner' ? 'bg-amber-100 text-amber-800 border-amber-200' : 'bg-slate-100 text-slate-700 border-slate-200'}`}>{member.role}</span>
-                                )}
+                                <span className={`text-xs font-semibold px-3 py-1 rounded-full border ${roleDisplay[member.role]?.className || 'bg-gray-100'}`}>
+                                    {roleDisplay[member.role]?.label || member.role}
+                                </span>
                                 
-                                {canManage && member.role !== 'Owner' && (
+                                {canManageMembers && member.role !== 'Owner' && (
                                     <button onClick={() => handleRemoveMember(member.uid)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-100 rounded-full transition-colors">
                                         <FaTrash/>
                                     </button>
