@@ -151,7 +151,7 @@ const ProjectMembers = () => {
                         {searchResult && (
                             <div className={`p-4 rounded-lg text-sm ${searchResult.notFound ? 'bg-red-50 text-red-800' : 'bg-indigo-50 text-indigo-800'}`}>
                                 {searchResult.notFound ? 'No se encontraron miembros con ese email en el equipo.' : 
-                                 `Usuario encontrado: ${searchResult.nombre_completo}`
+                                 `Usuario encontrado: ${searchResult.nombre_completo || searchResult.email}`
                                 }
                             </div>
                         )}
@@ -165,8 +165,8 @@ const ProjectMembers = () => {
                     {projectMembers.map(member => (
                         <li key={member.id} className="py-4 flex flex-col sm:flex-row items-center justify-between gap-4">
                             <div>
-                               <p className="font-bold text-slate-800">{member.nombre_completo}</p>
-                               <p className="text-sm text-slate-500">{member.email}</p>
+                               <p className="font-bold text-slate-800">{member.nombre_completo || member.email}</p>
+                               {member.nombre_completo && <p className="text-sm text-slate-500">{member.email}</p>}
                             </div>
                             <div className="flex items-center gap-4">
                                 <span className={`text-xs font-bold px-3 py-1 rounded-full flex items-center gap-2 ${member.projectRole === 'Manager' ? 'bg-blue-100 text-blue-800' : member.projectRole === 'Developer' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`}>
