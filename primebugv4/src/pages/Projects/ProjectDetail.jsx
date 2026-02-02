@@ -1,7 +1,7 @@
 // src/pages/Projects/ProjectDetail.jsx
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { doc, onSnapshot, collection, query, where } from 'firebase/firestore';
+import { doc, onSnapshot, collection, query, where, updateDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { 
@@ -58,15 +58,46 @@ const ProjectDetail = () => {
   const [loading, setLoading] = useState(true);
   const [accessDenied, setAccessDenied] = useState(false);
 
-  // Efecto para cargar datos del proyecto
+  // Efecto para cargar datos del proyecto, ahora con migración de datos
   useEffect(() => {
     if (!user || !projectId) return;
 
     const projectRef = doc(db, "projects", projectId);
-    const unsubscribe = onSnapshot(projectRef, (docSnap) => {
-      if (docSnap.exists() && docSnap.data().members?.includes(user.uid)) {
-        setProject({ id: docSnap.id, ...docSnap.data() });
-        setAccessDenied(false);
+    const unsubscribe = onSnapshot(projectRef, async (docSnap) => {
+      if (docSnap.exists()) {
+        const projectData = docSnap.data();
+        let members = projectData.members || {};
+        let isMember = false;
+
+        // Lógica de migración de datos y comprobación de acceso
+        if (Array.isArray(members)) {
+            console.log("ProjectDetail: Formato de miembros antiguo (Array) detectado. Migrando...");
+            isMember = members.includes(user.uid);
+            
+            const newMembersMap = members.reduce((acc, uid) => {
+                acc[uid] = { role: 'Developer' }; // Asigna un rol por defecto
+                return acc;
+            }, {});
+
+            try {
+                await updateDoc(projectRef, { members: newMembersMap });
+                members = newMembersMap; // Usa los nuevos datos para el renderizado actual
+                console.log("ProjectDetail: Migración de datos exitosa.");
+            } catch (migrationError) {
+                console.error("Error al migrar miembros del proyecto:", migrationError);
+            }
+        } else {
+            // Formato nuevo (Map) o sin miembros
+            isMember = members ? Object.keys(members).includes(user.uid) : false;
+        }
+
+        if (isMember) {
+          setProject({ id: docSnap.id, ...projectData, members: members });
+          setAccessDenied(false);
+        } else {
+          setAccessDenied(true);
+          setProject(null);
+        }
       } else {
         setAccessDenied(true);
         setProject(null);
@@ -81,7 +112,7 @@ const ProjectDetail = () => {
     return () => unsubscribe();
   }, [projectId, user]);
 
-  // Efecto para cargar estadísticas de bugs (MÁS COMPLETO)
+  // Efecto para cargar estadísticas de bugs
   useEffect(() => {
     if (!projectId) return;
 
@@ -146,7 +177,7 @@ const ProjectDetail = () => {
             <div className="flex flex-col sm:flex-row justify-between sm:items-start gap-4">
                 <div>
                     <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">{project.nombre}</h1>
-                    <p className="text-slate-500 mt-1 max-w-3xl">{project.descripcion.replace(/<p>|<\/p>/g, '')}</p>
+                    <p className="text-slate-500 mt-1 max-w-3xl">{project.descripcion?.replace(/<p>|<\/p>/g, '')}</p>
                 </div>
                 <Link to={`/proyectos/${projectId}/editar`} className="btn-secondary flex-shrink-0 flex items-center gap-2">
                     <FaEdit /> Editar Proyecto
@@ -161,7 +192,7 @@ const ProjectDetail = () => {
                 icon={<FaUsers className="text-xl text-blue-800"/>}
                 title="Gestionar Miembros"
                 description="Añade, elimina o modifica los roles de los participantes del proyecto."
-                badgeText={`${project.members?.length || 0} Miembros`}
+                badgeText={`${project.members ? Object.keys(project.members).length : 0} Miembros`}
                 badgeColor="bg-blue-100"
                 loading={loading}
             />

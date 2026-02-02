@@ -1,6 +1,6 @@
 // src/contexts/AuthContext.jsx
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { 
+import {
     onAuthStateChanged,
     signInWithEmailAndPassword,
     createUserWithEmailAndPassword,
@@ -9,7 +9,7 @@ import {
     updatePassword as firebaseUpdatePassword
 } from 'firebase/auth';
 import { auth, db } from '../firebase';
-import { doc, setDoc, getDoc, updateDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
 
 const AuthContext = createContext();
 
@@ -23,24 +23,16 @@ export const AuthProvider = ({ children }) => {
     useEffect(() => {
         let profileUnsubscribe = null;
 
-        const authUnsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-            if (profileUnsubscribe) profileUnsubscribe();
+        // Simplified auth state listener, removing the problematic update logic.
+        const authUnsubscribe = onAuthStateChanged(auth, (currentUser) => {
+            if (profileUnsubscribe) {
+                profileUnsubscribe();
+            }
 
             if (currentUser) {
                 const profileRef = doc(db, 'profiles', currentUser.uid);
 
-                // **INICIO DE LA CORRECCIÓN DEFINITIVA**
-                // 1. Antes de escuchar, se obtiene y se corrige el rol si es necesario.
-                const profileSnap = await getDoc(profileRef);
-                if (profileSnap.exists()) {
-                    const profileData = profileSnap.data();
-                    if (profileData.role === 'Owner' || profileData.role === 'Administrador') {
-                        await updateDoc(profileRef, { role: 'Admin' });
-                    }
-                }
-                // **FIN DE LA CORRECCIÓN DEFINITIVA**
-
-                // 2. Ahora, se escucha en tiempo real el perfil (ya corregido).
+                // Standard practice: Listen for real-time updates to the user's profile.
                 profileUnsubscribe = onSnapshot(profileRef, (snap) => {
                     setProfile(snap.exists() ? snap.data() : null);
                     setLoading(false);
@@ -48,19 +40,22 @@ export const AuthProvider = ({ children }) => {
                 setUser(currentUser);
 
             } else {
+                // User is signed out
                 setUser(null);
                 setProfile(null);
                 setLoading(false);
             }
         });
 
+        // Cleanup subscriptions on unmount
         return () => {
             authUnsubscribe();
-            if (profileUnsubscribe) profileUnsubscribe();
+            if (profileUnsubscribe) {
+                profileUnsubscribe();
+            }
         };
     }, []);
 
-    // Funciones de autenticación existentes...
     const signIn = (email, password) => signInWithEmailAndPassword(auth, email, password);
     const signOut = () => firebaseSignOut(auth);
     const resetPassword = (email) => sendPasswordResetEmail(auth, email);
@@ -69,6 +64,7 @@ export const AuthProvider = ({ children }) => {
     const signUp = async (email, password, fullName) => {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         const { user } = userCredential;
+        // On sign up, create the user profile in the 'profiles' collection.
         await setDoc(doc(db, 'profiles', user.uid), {
             uid: user.uid,
             email: user.email,

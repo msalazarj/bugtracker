@@ -9,6 +9,15 @@ import 'tippy.js/dist/tippy.css';
 import { FaBell, FaPlus, FaBars, FaChevronRight } from 'react-icons/fa';
 import NotificationsDropdown from './NotificationsDropdown.jsx';
 
+// --- Helper Functions ---
+
+const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
+const formatSlug = (slug) => {
+    if (!slug) return '';
+    return slug.split('-').map(capitalize).join(' ');
+};
+
 const friendlyNames = {
     'equipos': 'Equipos',
     'miembros': 'Miembros',
@@ -18,12 +27,14 @@ const friendlyNames = {
     'crear': 'Crear',
 };
 
+// --- Hooks ---
+
 const useDocumentName = (collectionName, docId, user) => {
     const [name, setName] = useState(docId);
 
     useEffect(() => {
         if (!docId || !collectionName || !user || docId.length !== 20) {
-            setName(friendlyNames[docId] || docId);
+            setName(friendlyNames[docId] || formatSlug(docId));
             return;
         }
 
@@ -43,6 +54,8 @@ const useDocumentName = (collectionName, docId, user) => {
 
     return name;
 };
+
+// --- Components ---
 
 const BreadcrumbItem = ({ segment, collectionName, isLast, user }) => {
     const name = useDocumentName(collectionName, segment, user);

@@ -1,15 +1,13 @@
 // src/pages/Projects/ProjectMembers.jsx
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { doc, getDoc, updateDoc, deleteField } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, arrayUnion, arrayRemove, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext.jsx';
-import { 
+import {
     FaTrash, FaPlus, FaExclamationCircle, FaUserShield, FaUserCog, 
-    FaUserCheck
+    FaUserCheck, FaSpinner, FaTimes, FaUser
 } from 'react-icons/fa';
-
-const ROLES = ['Developer', 'Tester', 'Manager'];
 
 const Card = ({ children, className = '' }) => (
     <div className={`bg-white p-6 rounded-2xl shadow-sm border border-slate-100 ${className}`}>
@@ -17,64 +15,69 @@ const Card = ({ children, className = '' }) => (
     </div>
 );
 
+const getRoleInfo = (role) => {
+    switch (role) {
+        case 'Admin':
+        case 'Manager':
+            return { icon: <FaUserShield />, className: 'bg-blue-100 text-blue-800' };
+        case 'Developer':
+            return { icon: <FaUserCog />, className: 'bg-green-100 text-green-800' };
+        case 'Tester':
+            return { icon: <FaUserCheck />, className: 'bg-amber-100 text-amber-800' };
+        default:
+            return { icon: <FaUser />, className: 'bg-slate-100 text-slate-800' };
+    }
+};
+
 const ProjectMembers = () => {
     const { projectId } = useParams();
     const { user: currentUser } = useAuth();
 
+    // State
     const [project, setProject] = useState(null);
     const [projectMembers, setProjectMembers] = useState([]);
-    const [allTeamMembers, setAllTeamMembers] = useState([]);
-    const [isOwnerOrManager, setIsOwnerOrManager] = useState(false);
+    const [isOwner, setIsOwner] = useState(false);
     
     const [loading, setLoading] = useState(true);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
-    const [searchResult, setSearchResult] = useState(null);
-    const [selectedRole, setSelectedRole] = useState(ROLES[0]);
+    const [searchResults, setSearchResults] = useState([]);
+    const [selectedUser, setSelectedUser] = useState(null);
 
     const loadData = useCallback(async () => {
         if (!currentUser || !projectId) return;
         setLoading(true);
+        setError('');
         try {
             const projectRef = doc(db, "projects", projectId);
             const projectSnap = await getDoc(projectRef);
 
             if (!projectSnap.exists()) throw new Error("El proyecto no existe.");
 
-            let projectData = { id: projectSnap.id, ...projectSnap.data() };
-            let membersData = projectData.members || {};
+            const projectData = { id: projectSnap.id, ...projectSnap.data() };
 
-            if (Array.isArray(membersData)) {
-                membersData = membersData.reduce((acc, uid) => ({ ...acc, [uid]: { role: 'Developer' } }), {});
-            }
-            membersData[projectData.ownerId] = { role: 'Manager' };
-
-            const isMember = Object.keys(membersData).includes(currentUser.uid);
+            const isMember = projectData.members?.includes(currentUser.uid);
             if (projectData.ownerId !== currentUser.uid && !isMember) {
                 throw new Error("No tienes permiso para ver los miembros de este proyecto.");
             }
             
-            projectData.members = membersData;
             setProject(projectData);
-            setIsOwnerOrManager(projectData.ownerId === currentUser.uid || membersData[currentUser.uid]?.role === 'Manager');
+            setIsOwner(projectData.ownerId === currentUser.uid);
 
-            if (projectData.teamId) {
-                const teamRef = doc(db, "teams", projectData.teamId);
-                const teamSnap = await getDoc(teamRef);
-                if (teamSnap.exists()) {
-                    const allMembers = Object.entries(teamSnap.data().members_roles || {}).map(([uid, data]) => ({ id: uid, ...data }));
-                    setAllTeamMembers(allMembers);
-                    const currentProjectMembers = Object.keys(membersData).map(uid => {
-                        const memberInfo = allMembers.find(m => m.id === uid);
-                        return memberInfo ? { ...memberInfo, projectRole: membersData[uid]?.role || 'N/A' } : null;
-                    }).filter(Boolean);
-                    setProjectMembers(currentProjectMembers);
-                }
+            const memberIds = projectData.members || [];
+            if (memberIds.length > 0) {
+                const profilesQuery = query(collection(db, 'profiles'), where('__name__', 'in', memberIds));
+                const profilesSnap = await getDocs(profilesQuery);
+                const memberDetails = profilesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+                setProjectMembers(memberDetails);
+            } else {
+                setProjectMembers([]);
             }
-            setError('');
+
         } catch (err) {
             setError(err.message);
+            console.error("Error loading project data:", err);
         } finally {
             setLoading(false);
         }
@@ -82,43 +85,53 @@ const ProjectMembers = () => {
 
     useEffect(() => { loadData(); }, [loadData]);
 
-    const handleSearch = (e) => {
+    const handleSearch = async (e) => {
         const term = e.target.value;
         setSearchTerm(term);
-        if (term.length > 2) {
-            const existingMemberIds = projectMembers.map(pm => pm.id);
-            const found = allTeamMembers.find(m => m.email.toLowerCase().includes(term.toLowerCase()) && !existingMemberIds.includes(m.id));
-            setSearchResult(found || { notFound: true });
-        } else {
-            setSearchResult(null);
+        setSelectedUser(null);
+        if (term.length < 3) {
+            setSearchResults([]);
+            return;
         }
+
+        const q = query(collection(db, "profiles"), where("email", ">=", term.toLowerCase()), where("email", "<=", term.toLowerCase() + '\uf8ff'));
+        const querySnapshot = await getDocs(q);
+        const profiles = querySnapshot.docs.map(doc => ({id: doc.id, ...doc.data()}));
+        const existingMemberIds = projectMembers.map(pm => pm.id);
+        setSearchResults(profiles.filter(p => !existingMemberIds.includes(p.id)));
     };
 
-    const handleAddMember = async () => {
-        if (!searchResult || searchResult.notFound) return;
+    const handleSelectUser = (user) => {
+        setSelectedUser(user);
+        setSearchTerm('');
+        setSearchResults([]);
+    };
+
+    const handleAddMember = async (e) => {
+        e.preventDefault();
+        if (!selectedUser) return;
         setIsSubmitting(true);
         try {
             const projectRef = doc(db, "projects", projectId);
-            await updateDoc(projectRef, { [`members.${searchResult.id}`]: { role: selectedRole } });
+            await updateDoc(projectRef, { members: arrayUnion(selectedUser.id) });
             await loadData();
-            setSearchResult(null);
-            setSearchTerm('');
-        } catch (err) { console.error("Error agregando miembro:", err); } finally {
-            setIsSubmitting(false);
-        }
+            setSelectedUser(null);
+        } catch (err) { console.error("Error agregando miembro:", err); setError("Error al agregar el miembro."); } 
+        finally { setIsSubmitting(false); }
     };
 
     const handleRemoveMember = async (memberId) => {
         if (project.ownerId === memberId) return alert("No se puede eliminar al dueño del proyecto.");
-        if (!window.confirm("¿Seguro que quieres quitar a este miembro del proyecto?")) return;
-        try {
-            const projectRef = doc(db, "projects", projectId);
-            await updateDoc(projectRef, { [`members.${memberId}`]: deleteField() });
-            await loadData();
-        } catch (err) { console.error("Error eliminando miembro:", err); }
+        if (window.confirm("¿Seguro que quieres quitar a este miembro del proyecto?")) {
+            try {
+                const projectRef = doc(db, "projects", projectId);
+                await updateDoc(projectRef, { members: arrayRemove(memberId) });
+                await loadData();
+            } catch (err) { console.error("Error eliminando miembro:", err); setError("Error al eliminar el miembro."); }
+        }
     };
 
-    if (loading) return <div className="text-center p-8">Cargando miembros...</div>;
+    if (loading) return <div className="flex justify-center items-center py-20"><FaSpinner className="animate-spin text-4xl text-indigo-500"/></div>;
     if (error) return (
       <Card className="text-center border-red-200">
         <FaExclamationCircle className="mx-auto text-5xl text-red-400" />
@@ -132,57 +145,68 @@ const ProjectMembers = () => {
         <div className="space-y-8">
             <header>
                  <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">Miembros del Proyecto: {project?.nombre}</h1>
-                 <p className="text-slate-500 mt-1">Gestiona quién tiene acceso a este proyecto y su rol.</p>
+                 <p className="text-slate-500 mt-1">Gestiona quién tiene acceso a este proyecto.</p>
             </header>
 
-            {isOwnerOrManager && (
+            {isOwner && (
                 <Card>
                     <h2 className="text-xl font-bold text-slate-800 mb-4">Agregar Nuevo Miembro</h2>
-                    <div className="space-y-4">
-                         <div className="flex items-center gap-3">
-                            <input type="email" placeholder="Email del nuevo miembro" value={searchTerm} onChange={handleSearch} className="input flex-1" />
-                            <select value={selectedRole} onChange={(e) => setSelectedRole(e.target.value)} className="input flex-shrink-0">
-                                {ROLES.map(role => <option key={role} value={role}>{role}</option>)}
-                            </select>
-                            <button onClick={handleAddMember} className="btn-primary flex-shrink-0" disabled={!searchResult || searchResult.notFound || isSubmitting}>
-                                <FaPlus className="mr-2"/> Agregar
-                            </button>
+                    <form onSubmit={handleAddMember} className="flex flex-col sm:flex-row gap-3">
+                        <div className="flex-1 relative">
+                            {!selectedUser ? (
+                                <div className="flex-1 relative">
+                                    <input type="email" placeholder="Buscar por email..." value={searchTerm} onChange={handleSearch} className="input-text w-full" />
+                                    {searchResults.length > 0 && (
+                                        <div className="absolute top-full left-0 right-0 z-10 bg-white border border-slate-200 rounded-lg mt-1 shadow-lg py-1">
+                                            {searchResults.map(user => (
+                                                 <button key={user.id} type="button" onClick={() => handleSelectUser(user)} className="w-full text-left px-4 py-2 hover:bg-slate-50 focus:outline-none focus:bg-slate-50">
+                                                    <p className="font-semibold text-slate-800">{user.fullName}</p>
+                                                    <p className="text-sm text-slate-500">{user.email}</p>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                <div className="flex-1 flex items-center justify-between bg-indigo-100 border border-indigo-200 text-indigo-800 rounded-lg px-3 py-2">
+                                    <p className="font-semibold text-sm">{selectedUser.fullName} ({selectedUser.email})</p>
+                                    <button type="button" onClick={() => setSelectedUser(null)} className="p-1 text-indigo-500 hover:text-indigo-800 rounded-full hover:bg-indigo-200"><FaTimes /></button>
+                                </div>
+                            )}
                         </div>
-                        {searchResult && (
-                            <div className={`p-4 rounded-lg text-sm ${searchResult.notFound ? 'bg-red-50 text-red-800' : 'bg-indigo-50 text-indigo-800'}`}>
-                                {searchResult.notFound ? 'No se encontraron miembros con ese email en el equipo.' : 
-                                 `Usuario encontrado: ${searchResult.nombre_completo || searchResult.email}`
-                                }
-                            </div>
-                        )}
-                    </div>
+                        <button type="submit" className="btn-primary whitespace-nowrap px-4 py-2 flex items-center justify-center gap-2" disabled={!selectedUser || isSubmitting}>
+                            {isSubmitting ? <FaSpinner className="animate-spin"/> : <FaPlus/>}
+                            {isSubmitting ? 'Agregando...' : 'Agregar'}
+                        </button>
+                    </form>
                 </Card>
             )}
 
             <Card>
                 <h2 className="text-xl font-bold text-slate-800 mb-4">Lista de Miembros ({projectMembers.length})</h2>
                 <ul className="divide-y divide-slate-100">
-                    {projectMembers.map(member => (
-                        <li key={member.id} className="py-4 flex flex-col sm:flex-row items-center justify-between gap-4">
-                            <div>
-                               <p className="font-bold text-slate-800">{member.nombre_completo || member.email}</p>
-                               {member.nombre_completo && <p className="text-sm text-slate-500">{member.email}</p>}
-                            </div>
-                            <div className="flex items-center gap-4">
-                                <span className={`text-xs font-bold px-3 py-1 rounded-full flex items-center gap-2 ${member.projectRole === 'Manager' ? 'bg-blue-100 text-blue-800' : member.projectRole === 'Developer' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`}>
-                                    {member.projectRole === 'Manager' && <FaUserShield />}
-                                    {member.projectRole === 'Developer' && <FaUserCog />}
-                                    {member.projectRole === 'Tester' && <FaUserCheck />}
-                                    {member.projectRole}
-                                </span>
-                                {isOwnerOrManager && project.ownerId !== member.id && (
-                                    <button onClick={() => handleRemoveMember(member.id)} className="text-slate-400 hover:text-red-600 transition-colors p-2">
-                                        <FaTrash />
-                                    </button>
-                                )}
-                            </div>
-                        </li>
-                    ))}
+                    {projectMembers.map(member => {
+                        const roleInfo = getRoleInfo(member.role);
+                        return (
+                            <li key={member.id} className="py-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+                                <div>
+                                   <p className="font-bold text-slate-800">{member.fullName || member.email}</p>
+                                   {member.fullName && <p className="text-sm text-slate-500">{member.email}</p>}
+                                </div>
+                                <div className="flex items-center gap-4">
+                                    <span className={`text-xs font-bold px-3 py-1 rounded-full flex items-center gap-2 ${roleInfo.className}`}>
+                                        {roleInfo.icon}
+                                        {member.role || 'User'}
+                                    </span>
+                                    {isOwner && currentUser.uid !== member.id && (
+                                        <button onClick={() => handleRemoveMember(member.id)} className="text-slate-400 hover:text-red-600 transition-colors p-2">
+                                            <FaTrash />
+                                        </button>
+                                    )}
+                                </div>
+                            </li>
+                        );
+                    })}
                 </ul>
             </Card>
         </div>

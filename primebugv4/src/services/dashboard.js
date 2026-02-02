@@ -26,8 +26,9 @@ export const getDashboardStats = async (userId) => {
     const projectIds = userProjects.map(p => p.id);
 
     let allBugs = [];
+    // 2. Obtener todos los bugs de esos proyectos usando una consulta "in".
+    // Esta es la forma eficiente y ahora debería funcionar al estar la caché deshabilitada.
     if (projectIds.length > 0) {
-      // 2. Obtener todos los bugs de esos proyectos
       const bugsQuery = query(collection(db, 'bugs'), where('proyecto_id', 'in', projectIds));
       const bugsSnapshot = await getDocs(bugsQuery);
       allBugs = bugsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -85,7 +86,7 @@ export const getDashboardStats = async (userId) => {
       stats: { bugs: {}, projects: [] },
       projectsWithStats: [],
       loading: false,
-      error: 'No se pudieron cargar los datos del dashboard.'
+      error: 'No se pudieron cargar los datos del dashboard. Verifica los permisos de Firestore.'
     };
   }
 };

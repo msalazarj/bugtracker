@@ -2,8 +2,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
-import { db } from '../../firebase';
 import { FaBug, FaEnvelope, FaLock, FaSignInAlt, FaSpinner } from 'react-icons/fa';
 
 const InputField = React.forwardRef(({ icon, ...props }, ref) => (
@@ -23,39 +21,24 @@ const Login = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState(null);
-    const { signIn, loading } = useAuth();
+    const { signIn, loading } = useAuth(); // Reemplaza isSubmitting con loading del contexto
     const navigate = useNavigate();
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError(null);
         try {
-            const userCredential = await signIn(email, password);
-            const user = userCredential.user;
+            // La única responsabilidad del Login es autenticar.
+            // La carga de datos del perfil ya la maneja AuthContext.
+            await signIn(email, password);
+            navigate('/dashboard'); // Redirige al dashboard después de un login exitoso.
 
-            // **Inicio de la Corrección de Roles**
-            // Después del login, verifica y estandariza el rol del usuario en su perfil.
-            if (user) {
-                const profileRef = doc(db, 'profiles', user.uid);
-                const profileSnap = await getDoc(profileRef);
-
-                if (profileSnap.exists()) {
-                    const profileData = profileSnap.data();
-                    const currentRole = profileData.role;
-
-                    // Si el rol es uno de los antiguos, actualizarlo a 'Admin'.
-                    if (currentRole === 'Owner' || currentRole === 'Administrador') {
-                        await updateDoc(profileRef, { role: 'Admin' });
-                    }
-                }
-            }
-            // **Fin de la Corrección de Roles**
-
-            navigate('/dashboard');
         } catch (err) {
+            // Manejo de errores de Firebase Auth
             if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
                 setError('El correo electrónico o la contraseña son incorrectos.');
             } else {
+                // Para cualquier otro error, mostrar un mensaje genérico.
                 console.error("Error de inicio de sesión inesperado:", err);
                 setError('Ocurrió un error inesperado. Por favor, inténtalo de nuevo.');
             }

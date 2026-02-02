@@ -1,0 +1,38 @@
+/* src/pages/Bugs/BugCreate.css */
+
+/* ----- ReactQuill Custom Styling ----- */
+
+/* 
+  This container class is added around the ReactQuill component 
+  to allow for custom styling that mimics our input-text class.
+*/
+.quill-container .ql-toolbar {
+  border-top-left-radius: 0.5rem;      /* 8px */
+  border-top-right-radius: 0.5rem;     /* 8px */
+  border-color: #cbd5e1;               /* slate-300 */
+  border-bottom: 0;
+  background-color: #f8fafc;           /* slate-50 */
+}
+
+.quill-container .ql-container {
+  border-bottom-left-radius: 0.5rem;   /* 8px */
+  border-bottom-right-radius: 0.5rem;  /* 8px */
+  border-color: #cbd5e1;               /* slate-300 */
+  font-size: 0.875rem;                 /* 14px, equivalent to text-sm */
+  min-height: 150px;
+}
+
+/* Ensure the editor itself has a transparent background to show the container's bg */
+.quill-container .ql-editor {
+    background-color: white;
+}
+
+/* Focus state to match other inputs */
+.quill-container .ql-container:focus-within {
+  border-color: #818cf8; /* indigo-400 */
+  box-shadow: 0 0 0 3px rgba(165, 180, 252, 0.4); /* Focus ring */
+}
+
+.quill-container .ql-toolbar.ql-snow + .ql-container.ql-snow {
+    border-top: 1px solid #cbd5e1; /* Re-apply top border to container that Quill removes */
+}
