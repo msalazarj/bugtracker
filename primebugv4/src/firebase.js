@@ -14,22 +14,25 @@ const firebaseConfig = {
 };
 
 // --- INICIALIZACIÓN ROBUSTA (SINGLETON) ---
-// Se comprueba si ya existe una app inicializada para evitar errores.
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
 const db = getFirestore(app);
 const auth = getAuth(app);
 
-// --- HABILITAR PERSISTENCIA OFFLINE (DESHABILITADO TEMPORALMENTE PARA LIMPIAR CACHÉ) ---
-// try {
-//   enableIndexedDbPersistence(db);
-// } catch (err) {
-//   if (err.code == 'failed-precondition') {
-//     console.warn("Persistencia de Firestore falló: múltiples pestañas abiertas.");
-//   } else if (err.code == 'unimplemented') {
-//     console.warn("Persistencia de Firestore no soportada en este navegador.");
-//   }
-// }
+// --- PERSISTENCIA DESACTIVADA TEMPORALMENTE ---
+// Se ha comentado esta sección para forzar a la app a leer desde el servidor
+// y evitar el colapso causado por una caché local (IndexedDB) corrupta.
+/*
+try {
+  enableIndexedDbPersistence(db);
+} catch (err) {
+  if (err.code == 'failed-precondition') {
+    console.warn("Persistencia de Firestore falló: múltiples pestañas abiertas.");
+  } else if (err.code == 'unimplemented') {
+    console.warn("Persistencia de Firestore no soportada en este navegador.");
+  }
+}
+*/
 
 // --- EXPORTACIÓN DE SERVICIOS ---
 export { app, db, auth };

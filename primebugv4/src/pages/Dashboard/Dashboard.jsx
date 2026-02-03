@@ -3,12 +3,28 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { getDashboardStats } from '../../services/dashboard.js';
 import { Link } from 'react-router-dom';
-import { FaBug, FaFolderOpen, FaTasks, FaCheckCircle, FaExclamationCircle, FaRedo, FaProjectDiagram } from 'react-icons/fa';
+// --- LÍNEA CORREGIDA: Se elimina FaBug ---
+import { FaFolderOpen, FaTasks, FaCheckCircle, FaExclamationCircle, FaRedo, FaProjectDiagram, FaPlusCircle } from 'react-icons/fa';
 import { getStatusPillClass } from '../../utils/styleHelpers';
 import Tippy from '@tippyjs/react';
 import 'tippy.js/dist/tippy.css';
 
-// --- Componente: Tarjeta de Estadísticas Globales ---
+// --- Componente de Bienvenida para nuevos usuarios sin equipo ---
+const WelcomePanel = () => (
+    <div className="text-center bg-gradient-to-br from-indigo-500 to-purple-600 p-12 rounded-xl shadow-lg border border-indigo-400">
+        <FaProjectDiagram className="mx-auto text-5xl text-white/50" />
+        <h2 className="mt-6 text-3xl font-bold text-white">¡Bienvenido a PrimeBug!</h2>
+        <p className="mt-2 text-lg text-indigo-200 max-w-2xl mx-auto">Parece que aún no eres parte de un equipo. Los equipos son necesarios para crear proyectos y gestionar bugs.</p>
+        <div className="mt-8">
+            <Link to="/equipos/crear" className="btn-primary inline-flex items-center gap-2 px-6 py-3 text-base font-bold">
+                <FaPlusCircle />
+                Crea tu Primer Equipo
+            </Link>
+            <p className="mt-4 text-sm text-indigo-300">Si ya has sido invitado a uno, la página se actualizará automáticamente.</p>
+        </div>
+    </div>
+);
+
 const StatCard = ({ icon, title, value, color, loading }) => {
     if (loading) {
         return <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-100 animate-pulse"><div className="h-8 w-2/3 bg-slate-200 rounded"></div><div className="h-12 w-1/3 bg-slate-200 rounded mt-2"></div></div>;
@@ -26,7 +42,6 @@ const StatCard = ({ icon, title, value, color, loading }) => {
     );
 };
 
-// --- Componente: Tarjeta de Proyecto Rediseñada ---
 const ProjectCard = ({ project, loading }) => {
     if (loading) {
         return <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5 animate-pulse"><div className="h-8 w-8 bg-slate-200 rounded-full mb-4"></div><div className="h-5 w-3/4 bg-slate-200 rounded"></div><div className="flex gap-2 mt-4"><div className="h-5 w-12 bg-slate-200 rounded-full"></div><div className="h-5 w-12 bg-slate-200 rounded-full"></div></div></div>;
@@ -72,16 +87,19 @@ const ProjectCard = ({ project, loading }) => {
     );
 };
 
-// --- Componente Principal del Dashboard ---
 const Dashboard = () => {
   const [data, setData] = useState({ stats: { bugs: {} }, projectsWithStats: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const { user } = useAuth();
+  const { user, hasTeam } = useAuth();
 
   useEffect(() => {
+    if (!user || !hasTeam) {
+        setLoading(false);
+        return;
+    }
+    
     const fetchData = async () => {
-      if (!user) return;
       try {
         setLoading(true);
         const dashboardData = await getDashboardStats(user.uid);
@@ -96,8 +114,13 @@ const Dashboard = () => {
         setLoading(false);
       }
     };
+
     fetchData();
-  }, [user]);
+  }, [user, hasTeam]);
+
+  if (!hasTeam && !loading) {
+      return <WelcomePanel />;
+  }
 
   const { stats, projectsWithStats } = data;
 
@@ -116,7 +139,11 @@ const Dashboard = () => {
 
         {/* Sección de Proyectos */}
         <div className="space-y-5">
-            <h2 className="text-2xl font-bold text-slate-800">Mis Proyectos</h2>
+            <div className="flex justify-between items-center">
+                <h2 className="text-2xl font-bold text-slate-800">Mis Proyectos</h2>
+                <Link to="/proyectos/crear" className="btn-secondary text-sm">Crear Proyecto</Link>
+            </div>
+
             {error && <p className="text-red-500 bg-red-50 p-4 rounded-lg">{error}</p>}
             {loading ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -129,8 +156,9 @@ const Dashboard = () => {
             ) : (
                 <div className="text-center bg-white p-12 rounded-xl shadow-sm border border-slate-100">
                     <FaProjectDiagram className="mx-auto text-5xl text-slate-300" />
-                    <h3 className="mt-6 text-lg font-bold text-slate-700">No estás en ningún proyecto</h3>
-                    <p className="mt-1 text-slate-500">Pide a un administrador que te añada a un proyecto para empezar a colaborar.</p>
+                    <h3 className="mt-6 text-lg font-bold text-slate-700">Aún no tienes proyectos</h3>
+                    <p className="mt-1 text-slate-500">¡Crea tu primer proyecto para empezar a organizar tus tareas y bugs!</p>
+                    <Link to="/proyectos/crear" className="btn-primary mt-6">Crear mi primer proyecto</Link>
                 </div>
             )}
         </div>

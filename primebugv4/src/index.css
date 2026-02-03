@@ -4,18 +4,15 @@
 @tailwind utilities;
 
 /* 1. Fuentes y Base */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 @import 'react-quill/dist/quill.snow.css';
 
 @layer base {
   body {
     font-family: 'Inter', sans-serif;
-    @apply bg-slate-100 text-slate-800 antialiased;
+    @apply bg-slate-100 text-slate-700 antialiased;
   }
-
-  h1, h2, h3, h4, h5, h6 {
-    @apply font-bold tracking-tight;
-  }
+  h1, h2, h3, h4, h5, h6 { @apply font-bold tracking-tight text-slate-900; }
 }
 
 @layer components {
@@ -24,46 +21,51 @@
     @apply flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors;
     @apply text-slate-500 hover:bg-indigo-50 hover:text-indigo-600;
   }
-
   .nav-link-item.active {
     @apply bg-indigo-600 text-white shadow-md shadow-indigo-200;
   }
 
-  /* 3. Botones */
+  /* 3. Botones (ESTILOS CORREGIDOS) */
   .btn-primary {
-    @apply px-4 py-2 bg-indigo-600 text-white font-semibold rounded-lg shadow-sm 
+    @apply inline-flex items-center justify-center px-5 py-2.5 bg-indigo-600 text-white font-bold text-sm rounded-lg shadow-sm 
            hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 
-           focus:ring-offset-2 transition-all active:scale-95 disabled:bg-slate-300;
+           focus:ring-offset-2 transition-all active:scale-95 disabled:bg-slate-300 disabled:cursor-not-allowed;
   }
 
   .btn-secondary {
-    @apply px-4 py-2 bg-white border border-slate-300 text-slate-700 font-semibold rounded-lg shadow-sm
-           hover:bg-slate-50 active:scale-95 disabled:opacity-50;
+    @apply inline-flex items-center justify-center px-5 py-2.5 bg-white border border-slate-300 text-slate-700 font-bold text-sm rounded-lg shadow-sm
+           hover:bg-red-50 hover:border-red-400 hover:text-red-600 
+           focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2
+           transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  
+  /* Clase alias para acciones destructivas, para mayor semántica */
+  .btn-danger {
+      @apply btn-secondary;
   }
 
-  /* 4. Estilos para Formularios (Inputs y Selects) */
-  .input-text {
-    @apply w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg shadow-sm 
-           text-sm font-medium text-slate-800 placeholder-slate-400 
-           focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all;
-  }
-
-  /* Ajustes específicos para <select> para que herede la fuente y el estilo */
-  select.input-text {
-    -webkit-appearance: none;
-    -moz-appearance: none;
-    appearance: none;
-    background-image: url('data:image/svg+xml;charset=UTF-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l4 4 4-4"/></svg>');
-    background-repeat: no-repeat;
-    background-position: right 0.75rem center;
-    background-size: 1.25em;
-    padding-right: 2.5rem; /* Espacio para la flecha */
-  }
-
+  /* 4. Estilos para Formularios (MINIMALISTA) */
+  .form-field { @apply mb-8; }
+  .form-label { @apply flex items-center text-sm font-semibold text-slate-500 mb-2; }
+  .form-label-icon { @apply mr-2 text-slate-400; }
+  .input-underlined { @apply w-full bg-transparent border-0 border-b-2 border-slate-200 py-2 px-1 text-base font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-0 focus:border-indigo-500 transition-colors; }
+  textarea.input-underlined { @apply h-24; }
+  .form-hint { @apply text-xs text-slate-500 mt-2; }
+  
   /* 5. Tarjetas y Contenedores */
   .card {
     @apply bg-white p-6 rounded-xl shadow-sm border border-slate-200;
   }
+
+  /* 6. LAYOUT DE PÁGINA DIVIDIDA */
+  .split-page-layout { @apply grid grid-cols-1 md:grid-cols-[1fr_1.5fr] min-h-screen w-screen fixed top-0 left-0 bg-slate-50 z-[1000]; }
+  .split-page-info-panel { @apply bg-gray-900 text-white p-10 md:p-16 flex flex-col; }
+  .info-panel-logo-container { @apply flex items-center gap-3 text-white text-xl font-extrabold uppercase tracking-wider; }
+  .info-panel-logo-icon { @apply bg-indigo-600 p-3 rounded-lg; }
+  .info-panel-title { @apply text-5xl lg:text-6xl font-black text-white mt-12 mb-4 leading-tight; }
+  .info-panel-description { @apply text-base text-slate-400 max-w-sm; }
+  .split-page-form-panel { @apply flex items-center justify-center p-4 md:p-8 overflow-y-auto; }
+  .split-page-form-container { @apply w-full max-w-sm; }
 
   /* --- OTRAS CLASES --- */
   .section-title { @apply text-2xl font-black text-slate-800 mb-6; }

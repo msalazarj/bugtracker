@@ -1,16 +1,16 @@
 // src/pages/Teams/TeamCreate.jsx
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { collection, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore';
+import { collection, doc, serverTimestamp, runTransaction } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext.jsx';
-import { FaUsers, FaArrowLeft } from 'react-icons/fa';
+import { FaUsers, FaBug, FaTimes } from 'react-icons/fa';
 
 const TeamCreate = () => {
     const [nombre, setNombre] = useState('');
     const [error, setError] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const { user } = useAuth(); // Se elimina la dependencia directa de `profile`
+    const { user, refreshProfile } = useAuth();
     const navigate = useNavigate();
 
     const handleSubmit = async (e) => {
@@ -28,88 +28,102 @@ const TeamCreate = () => {
         setError('');
 
         try {
-            // Obtener el perfil del usuario directamente para asegurar datos frescos
-            const profileRef = doc(db, 'profiles', user.uid);
-            const profileSnap = await getDoc(profileRef);
+            await runTransaction(db, async (transaction) => {
+                const profileRef = doc(db, 'profiles', user.uid);
+                const profileSnap = await transaction.get(profileRef);
 
-            if (!profileSnap.exists()) {
-                throw new Error("No se pudo encontrar el perfil del usuario.");
-            }
-            const userProfile = profileSnap.data();
-
-            const teamData = {
-                nombre: nombre.trim(),
-                ownerId: user.uid,
-                createdAt: serverTimestamp(),
-                members: [user.uid], // Requerido por la regla de seguridad
-                members_roles: {
-                    [user.uid]: {
-                        role: 'Owner',
-                        displayName: userProfile.nombre_completo, // Dato obtenido al momento
-                        email: user.email
-                    }
+                if (!profileSnap.exists()) {
+                    throw new Error("No se pudo encontrar tu perfil de usuario.");
                 }
-            };
+                const userProfile = profileSnap.data();
+                 if (userProfile.teamId) {
+                    throw new Error("Ya perteneces a un equipo. No puedes crear uno nuevo.");
+                }
 
-            await addDoc(collection(db, 'teams'), teamData);
-            navigate('/equipos');
+                const newTeamRef = doc(collection(db, 'teams'));
+                const displayName = userProfile.nombre_completo || user.displayName || user.email;
+
+                if (!displayName) {
+                    throw new Error("No se pudo obtener un nombre de usuario válido.");
+                }
+
+                const teamData = {
+                    nombre: nombre.trim(),
+                    ownerId: user.uid,
+                    createdAt: serverTimestamp(),
+                    members: [user.uid],
+                    members_roles: {
+                        [user.uid]: { role: 'Owner', displayName: displayName, email: user.email }
+                    }
+                };
+
+                transaction.set(newTeamRef, teamData);
+                transaction.update(profileRef, { teamId: newTeamRef.id });
+            });
+
+            if (refreshProfile) {
+                await refreshProfile();
+            }
+            
+            navigate('/dashboard');
 
         } catch (err) {
-            console.error("Error al crear el equipo:", err);
-            setError('No se pudo crear el equipo. Revisa las reglas de seguridad y la conexión.');
+            console.error("Error en transacción de creación de equipo:", err);
+            setError(err.message || 'No se pudo crear el equipo.');
         } finally {
             setIsSubmitting(false);
         }
     };
 
     return (
-        <div className="max-w-3xl mx-auto">
-             <div className="mb-6">
-                <Link to="/equipos" className="flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-indigo-600 transition-colors">
-                    <FaArrowLeft />
-                    Volver a Equipos
-                </Link>
+        <div className="split-page-layout">
+            <Link to="/dashboard" className="absolute top-6 right-8 text-slate-400 hover:text-red-500 transition-colors z-20">
+                <FaTimes size={24} />
+            </Link>
+
+            <div className="split-page-info-panel">
+                <div className="info-panel-logo-container">
+                    <div className="info-panel-logo-icon"><FaBug /></div>
+                    <span>PrimeBug</span>
+                </div>
+                <h1 className="info-panel-title">Crea tu Equipo de Trabajo</h1>
+                <p className="info-panel-description">
+                    Centraliza la colaboración, gestiona miembros y asigna roles para organizar tu flujo de trabajo de manera eficiente.
+                </p>
             </div>
 
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-100">
-                <div className="px-6 py-5 sm:px-8 border-b border-slate-200">
-                     <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-slate-100 rounded-lg flex items-center justify-center">
-                             <FaUsers className="text-indigo-500 w-6 h-6" />
-                        </div>
-                        <div>
-                             <h1 className="text-xl font-bold text-slate-800">Crear un Nuevo Equipo</h1>
-                             <p className="text-sm text-slate-500">Define un nombre para tu equipo y empieza a colaborar.</p>
-                        </div>
-                     </div>
-                </div>
-                
-                <form onSubmit={handleSubmit} noValidate>
-                    <div className="p-6 sm:p-8 space-y-4">
-                        <div>
-                            <label htmlFor="team-name" className="block text-sm font-semibold text-slate-700 mb-1.5">Nombre del Equipo</label>
+            <div className="split-page-form-panel">
+                <div className="split-page-form-container">
+                    <form onSubmit={handleSubmit}>
+                        <div className="form-field">
+                            <label htmlFor="team-name" className="form-label">
+                                <FaUsers className="form-label-icon" />
+                                Nombre del Equipo
+                            </label>
                             <input
-                                type="text"
                                 id="team-name"
-                                className="input-text w-full"
+                                type="text"
                                 value={nombre}
                                 onChange={(e) => setNombre(e.target.value)}
-                                placeholder="Ej: Equipo de Marketing Digital"
+                                className="input-underlined"
+                                placeholder="Ej: Equipo de Innovación"
                                 required
                             />
+                             <p className="form-hint">Este será el nombre de tu espacio de trabajo compartido.</p>
                         </div>
-                         {error && <p className="text-sm text-red-600">{error}</p>}
-                    </div>
+                        
+                        {error && <p className="mt-6 text-sm text-red-600 bg-red-50 p-3 rounded-lg font-medium">{error}</p>}
 
-                    <div className="px-6 sm:px-8 py-4 bg-slate-50/70 border-t border-slate-200 flex justify-end items-center gap-x-3">
-                        <button type="button" onClick={() => navigate(-1)} className="btn-secondary px-4 py-2 text-sm font-medium">
-                            Cancelar
-                        </button>
-                        <button type="submit" disabled={isSubmitting} className="btn-primary flex items-center justify-center gap-x-2 px-4 py-2 text-sm font-medium">
-                            {isSubmitting ? 'Creando...' : 'Crear Equipo'}
-                        </button>
-                    </div>
-                </form>
+                        <div className="flex items-center justify-end gap-4 pt-6">
+                            <button type="button" onClick={() => navigate('/dashboard')} className="btn-secondary">
+                                Cancelar
+                            </button>
+                            <button type="submit" disabled={isSubmitting} className="btn-primary">
+                                {isSubmitting ? 'Creando Equipo...' : 'Crear Equipo'}
+                            </button>
+                        </div>
+                    </form>
+                </div>
             </div>
         </div>
     );

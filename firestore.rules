@@ -4,11 +4,32 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     //============================================================
+    // FUNCIONES AUXILIARES DE SEGURIDAD
+    //============================================================
+
+    // Función que obtiene el perfil del usuario autenticado.
+    function getUserProfile() {
+      return get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data;
+    }
+
+    // Función que verifica si el usuario es miembro de un recurso (maneja la estructura nueva y la antigua).
+    function isMember(resourceData) {
+      // La sintaxis correcta sin 'if'. Devuelve el resultado de la expresión booleana.
+      return (resourceData.members is list && request.auth.uid in resourceData.members) ||
+             (resourceData.members is map && request.auth.uid in resourceData.members.keys());
+    }
+
+    // Función que verifica la membresía a un proyecto para un bug (movida al nivel superior).
+    function isProjectMemberForBug(projectId) {
+      let projectDoc = get(/databases/$(database)/documents/projects/$(projectId));
+      return projectDoc.exists && isMember(projectDoc.data);
+    }
+
+    //============================================================
     // REGLAS DE PERFILES DE USUARIO
     //============================================================
     match /profiles/{userId} {
       allow read: if request.auth != null;
-      // Se simplifica la regla: request.auth != null es redundante.
       allow write: if request.auth.uid == userId;
     }
 
@@ -16,8 +37,16 @@ service cloud.firestore {
     // REGLAS DE PROYECTOS
     //============================================================
     match /projects/{projectId} {
-      allow read, update: if request.auth != null && request.auth.uid in resource.data.members;
-      allow create: if request.auth != null && request.auth.uid in request.resource.data.members;
+      // LECTURA/ACTUALIZACIÓN: Permite si eres miembro del proyecto.
+      allow read, update: if request.auth != null && isMember(resource.data);
+
+      // CREACIÓN: Regla robusta para garantizar la integridad de los datos.
+      allow create: if request.auth != null &&
+                       request.resource.data.members is list &&
+                       request.auth.uid in request.resource.data.members &&
+                       request.resource.data.teamId == getUserProfile().teamId;
+
+      // BORRADO: Solo el propietario puede borrar.
       allow delete: if request.auth != null && request.auth.uid == resource.data.ownerId;
     }
 
@@ -25,23 +54,17 @@ service cloud.firestore {
     // REGLAS DE BUGS 
     //============================================================
     match /bugs/{bugId} {
-      // Función refactorizada para consistencia y seguridad.
-      function isProjectMember(projectId) {
-        let projectData = get(/databases/$(database)/documents/projects/$(projectId)).data;
-        // Se verifica que 'members' exista y se usa 'in' de forma consistente.
-        return 'members' in projectData && request.auth.uid in projectData.members;
-      }
-      
-      allow read, update, delete: if request.auth != null && isProjectMember(resource.data.proyecto_id);
-      allow create: if request.auth != null && isProjectMember(request.resource.data.proyecto_id);
+      // La lógica de la función se invoca aquí, pero la función se declara arriba.
+      allow read, update, delete: if request.auth != null && isProjectMemberForBug(resource.data.proyecto_id);
+      allow create: if request.auth != null && isProjectMemberForBug(request.resource.data.proyecto_id);
     }
     
     //============================================================
     // REGLAS DE EQUIPOS (TEAMS)
     //============================================================
     match /teams/{teamId} {
-      allow read, update: if request.auth != null && request.auth.uid in resource.data.members;
-      allow create: if request.auth != null && request.auth.uid in request.resource.data.members;
+      allow read, update: if request.auth != null && isMember(resource.data);
+      allow create: if request.auth != null && request.resource.data.members is list && request.auth.uid in request.resource.data.members;
       allow delete: if request.auth != null && request.auth.uid == resource.data.ownerId;
     }
   }
