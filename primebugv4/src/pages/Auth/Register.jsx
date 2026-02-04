@@ -32,7 +32,9 @@ const Register = () => {
         if (password !== confirmPassword) { return setError('Las contraseñas no coinciden.'); }
         if (password.length < 8) { return setError('La contraseña debe tener al menos 8 caracteres.'); }
         try {
-            await signUp(email, password, { nombre_completo: nombreCompleto });
+            // --- LÍNEA CORREGIDA ---
+            // Se pasa el `nombreCompleto` como un string, no como un objeto.
+            await signUp(email, password, nombreCompleto);
             navigate('/dashboard');
         } catch (err) {
             if (err.code === 'auth/email-already-in-use') { setError('Este correo electrónico ya está en uso.');
@@ -44,7 +46,7 @@ const Register = () => {
     return (
         <div className="min-h-screen bg-slate-50 font-sans">
             <div className="grid grid-cols-1 md:grid-cols-2 min-h-screen">
-                {/* Columna de Branding (Izquierda) - CORREGIDA */}
+                {/* Columna de Branding */}
                 <div className="bg-slate-900 text-white p-12 flex flex-col justify-center items-start">
                     <div className="w-full max-w-md">
                         <div className="flex items-center gap-3 mb-8">
@@ -60,7 +62,7 @@ const Register = () => {
                     </div>
                 </div>
 
-                {/* Columna del Formulario (Derecha) - CORREGIDA */}
+                {/* Columna del Formulario */}
                 <div className="flex flex-col justify-center items-center p-8 md:p-12">
                     <div className="w-full max-w-sm">
                         <div className="text-left mb-8">

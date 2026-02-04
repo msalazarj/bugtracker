@@ -1,12 +1,12 @@
 // src/pages/Projects/ProjectMembers.jsx
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { doc, getDoc, updateDoc, arrayUnion, arrayRemove, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, collection, query, where, getDocs, deleteField } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import {
     FaTrash, FaPlus, FaExclamationCircle, FaUserShield, FaUserCog, 
-    FaUserCheck, FaSpinner, FaTimes, FaUser
+    FaUserCheck, FaSpinner, FaTimes, FaUser, FaCrown
 } from 'react-icons/fa';
 
 const Card = ({ children, className = '' }) => (
@@ -17,17 +17,18 @@ const Card = ({ children, className = '' }) => (
 
 const getRoleInfo = (role) => {
     switch (role) {
-        case 'Admin':
+        case 'Creador':
+            return { icon: <FaCrown />, className: 'bg-amber-100 text-amber-800' };
         case 'Manager':
             return { icon: <FaUserShield />, className: 'bg-blue-100 text-blue-800' };
-        case 'Developer':
-            return { icon: <FaUserCog />, className: 'bg-green-100 text-green-800' };
         case 'Tester':
-            return { icon: <FaUserCheck />, className: 'bg-amber-100 text-amber-800' };
+            return { icon: <FaUserCheck />, className: 'bg-green-100 text-green-800' };
         default:
             return { icon: <FaUser />, className: 'bg-slate-100 text-slate-800' };
     }
 };
+
+const rolesDisponibles = ['Manager', 'Tester'];
 
 const ProjectMembers = () => {
     const { projectId } = useParams();
@@ -36,7 +37,7 @@ const ProjectMembers = () => {
     // State
     const [project, setProject] = useState(null);
     const [projectMembers, setProjectMembers] = useState([]);
-    const [isOwner, setIsOwner] = useState(false);
+    const [userRole, setUserRole] = useState(null);
     
     const [loading, setLoading] = useState(true);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -44,6 +45,7 @@ const ProjectMembers = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [searchResults, setSearchResults] = useState([]);
     const [selectedUser, setSelectedUser] = useState(null);
+    const [selectedRole, setSelectedRole] = useState('Tester');
 
     const loadData = useCallback(async () => {
         if (!currentUser || !projectId) return;
@@ -56,20 +58,24 @@ const ProjectMembers = () => {
             if (!projectSnap.exists()) throw new Error("El proyecto no existe.");
 
             const projectData = { id: projectSnap.id, ...projectSnap.data() };
+            const membersMap = projectData.members || {};
 
-            const isMember = projectData.members?.includes(currentUser.uid);
-            if (projectData.ownerId !== currentUser.uid && !isMember) {
+            if (!membersMap[currentUser.uid]) {
                 throw new Error("No tienes permiso para ver los miembros de este proyecto.");
             }
             
             setProject(projectData);
-            setIsOwner(projectData.ownerId === currentUser.uid);
+            setUserRole(membersMap[currentUser.uid].role);
 
-            const memberIds = projectData.members || [];
+            const memberIds = Object.keys(membersMap);
             if (memberIds.length > 0) {
                 const profilesQuery = query(collection(db, 'profiles'), where('__name__', 'in', memberIds));
                 const profilesSnap = await getDocs(profilesQuery);
-                const memberDetails = profilesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+                const memberDetails = profilesSnap.docs.map(d => ({
+                    id: d.id,
+                    ...d.data(),
+                    role: membersMap[d.id].role
+                }));
                 setProjectMembers(memberDetails);
             } else {
                 setProjectMembers([]);
@@ -89,7 +95,7 @@ const ProjectMembers = () => {
         const term = e.target.value;
         setSearchTerm(term);
         setSelectedUser(null);
-        if (term.length < 3) {
+        if (term.length < 2) {
             setSearchResults([]);
             return;
         }
@@ -113,9 +119,12 @@ const ProjectMembers = () => {
         setIsSubmitting(true);
         try {
             const projectRef = doc(db, "projects", projectId);
-            await updateDoc(projectRef, { members: arrayUnion(selectedUser.id) });
+            await updateDoc(projectRef, {
+                [`members.${selectedUser.id}`]: { role: selectedRole }
+            });
             await loadData();
             setSelectedUser(null);
+            setSelectedRole('Tester');
         } catch (err) { console.error("Error agregando miembro:", err); setError("Error al agregar el miembro."); } 
         finally { setIsSubmitting(false); }
     };
@@ -125,7 +134,9 @@ const ProjectMembers = () => {
         if (window.confirm("¿Seguro que quieres quitar a este miembro del proyecto?")) {
             try {
                 const projectRef = doc(db, "projects", projectId);
-                await updateDoc(projectRef, { members: arrayRemove(memberId) });
+                await updateDoc(projectRef, {
+                    [`members.${memberId}`]: deleteField()
+                });
                 await loadData();
             } catch (err) { console.error("Error eliminando miembro:", err); setError("Error al eliminar el miembro."); }
         }
@@ -141,6 +152,8 @@ const ProjectMembers = () => {
       </Card>
     );
 
+    const canManageMembers = userRole === 'Creador';
+
     return (
         <div className="space-y-8">
             <header>
@@ -148,35 +161,39 @@ const ProjectMembers = () => {
                  <p className="text-slate-500 mt-1">Gestiona quién tiene acceso a este proyecto.</p>
             </header>
 
-            {isOwner && (
+            {canManageMembers && (
                 <Card>
                     <h2 className="text-xl font-bold text-slate-800 mb-4">Agregar Nuevo Miembro</h2>
-                    <form onSubmit={handleAddMember} className="flex flex-col sm:flex-row gap-3">
-                        <div className="flex-1 relative">
-                            {!selectedUser ? (
-                                <div className="flex-1 relative">
-                                    <input type="email" placeholder="Buscar por email..." value={searchTerm} onChange={handleSearch} className="input-text w-full" />
-                                    {searchResults.length > 0 && (
-                                        <div className="absolute top-full left-0 right-0 z-10 bg-white border border-slate-200 rounded-lg mt-1 shadow-lg py-1">
-                                            {searchResults.map(user => (
-                                                 <button key={user.id} type="button" onClick={() => handleSelectUser(user)} className="w-full text-left px-4 py-2 hover:bg-slate-50 focus:outline-none focus:bg-slate-50">
-                                                    <p className="font-semibold text-slate-800">{user.fullName}</p>
-                                                    <p className="text-sm text-slate-500">{user.email}</p>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            ) : (
-                                <div className="flex-1 flex items-center justify-between bg-indigo-100 border border-indigo-200 text-indigo-800 rounded-lg px-3 py-2">
-                                    <p className="font-semibold text-sm">{selectedUser.fullName} ({selectedUser.email})</p>
-                                    <button type="button" onClick={() => setSelectedUser(null)} className="p-1 text-indigo-500 hover:text-indigo-800 rounded-full hover:bg-indigo-200"><FaTimes /></button>
-                                </div>
-                            )}
+                    <form onSubmit={handleAddMember} className="space-y-4">
+                        <div className="flex flex-col sm:flex-row gap-3">
+                            <div className="flex-1 relative">
+                                {!selectedUser ? (
+                                    <div className="flex-1 relative">
+                                        <input type="email" placeholder="Buscar por email..." value={searchTerm} onChange={handleSearch} className="input-text w-full" />
+                                        {searchResults.length > 0 && (
+                                            <div className="absolute top-full left-0 right-0 z-10 bg-white border border-slate-200 rounded-lg mt-1 shadow-lg py-1">
+                                                {searchResults.map(user => (
+                                                    <button key={user.id} type="button" onClick={() => handleSelectUser(user)} className="w-full text-left px-4 py-2 hover:bg-slate-50 focus:outline-none focus:bg-slate-50">
+                                                        <p className="font-semibold text-slate-800">{user.fullName || user.email}</p>
+                                                        <p className="text-sm text-slate-500">{user.email}</p>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <div className="flex-1 flex items-center justify-between bg-indigo-50 border border-indigo-200 text-indigo-800 rounded-lg px-3 py-2">
+                                        <p className="font-semibold text-sm">{selectedUser.fullName} ({selectedUser.email})</p>
+                                        <button type="button" onClick={() => setSelectedUser(null)} className="p-1 text-indigo-500 hover:text-indigo-800 rounded-full hover:bg-indigo-200"><FaTimes /></button>
+                                    </div>
+                                )}
+                            </div>
+                            <select value={selectedRole} onChange={(e) => setSelectedRole(e.target.value)} className="input-text bg-white" disabled={!selectedUser}>
+                                {rolesDisponibles.map(r => <option key={r} value={r}>{r}</option>)}
+                            </select>
                         </div>
-                        <button type="submit" className="btn-primary whitespace-nowrap px-4 py-2 flex items-center justify-center gap-2" disabled={!selectedUser || isSubmitting}>
-                            {isSubmitting ? <FaSpinner className="animate-spin"/> : <FaPlus/>}
-                            {isSubmitting ? 'Agregando...' : 'Agregar'}
+                        <button type="submit" className="btn-primary w-full sm:w-auto" disabled={!selectedUser || isSubmitting}>
+                            {isSubmitting ? <><FaSpinner className="animate-spin mr-2"/> Agregando...</> : <><FaPlus className="mr-2"/> Agregar Miembro</>}
                         </button>
                     </form>
                 </Card>
@@ -189,16 +206,16 @@ const ProjectMembers = () => {
                         const roleInfo = getRoleInfo(member.role);
                         return (
                             <li key={member.id} className="py-4 flex flex-col sm:flex-row items-center justify-between gap-4">
-                                <div>
+                                <div className="flex-1">
                                    <p className="font-bold text-slate-800">{member.fullName || member.email}</p>
                                    {member.fullName && <p className="text-sm text-slate-500">{member.email}</p>}
                                 </div>
                                 <div className="flex items-center gap-4">
                                     <span className={`text-xs font-bold px-3 py-1 rounded-full flex items-center gap-2 ${roleInfo.className}`}>
                                         {roleInfo.icon}
-                                        {member.role || 'User'}
+                                        {member.role}
                                     </span>
-                                    {isOwner && currentUser.uid !== member.id && (
+                                    {canManageMembers && currentUser.uid !== member.id && (
                                         <button onClick={() => handleRemoveMember(member.id)} className="text-slate-400 hover:text-red-600 transition-colors p-2">
                                             <FaTrash />
                                         </button>

@@ -2,6 +2,7 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore, enableIndexedDbPersistence } from "firebase/firestore";
+import { getStorage } from "firebase/storage"; // 1. IMPORTAR STORAGE
 
 // --- CONFIGURACIÓN DE FIREBASE ---
 const firebaseConfig = {
@@ -18,6 +19,7 @@ const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
 const db = getFirestore(app);
 const auth = getAuth(app);
+const storage = getStorage(app); // 2. INICIALIZAR STORAGE
 
 // --- PERSISTENCIA DESACTIVADA TEMPORALMENTE ---
 // Se ha comentado esta sección para forzar a la app a leer desde el servidor
@@ -35,4 +37,4 @@ try {
 */
 
 // --- EXPORTACIÓN DE SERVICIOS ---
-export { app, db, auth };
+export { app, db, auth, storage }; // 3. EXPORTAR STORAGE

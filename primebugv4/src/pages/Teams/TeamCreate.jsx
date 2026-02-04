@@ -35,25 +35,19 @@ const TeamCreate = () => {
                 if (!profileSnap.exists()) {
                     throw new Error("No se pudo encontrar tu perfil de usuario.");
                 }
-                const userProfile = profileSnap.data();
-                 if (userProfile.teamId) {
+                if (profileSnap.data().teamId) {
                     throw new Error("Ya perteneces a un equipo. No puedes crear uno nuevo.");
                 }
 
                 const newTeamRef = doc(collection(db, 'teams'));
-                const displayName = userProfile.nombre_completo || user.displayName || user.email;
-
-                if (!displayName) {
-                    throw new Error("No se pudo obtener un nombre de usuario válido.");
-                }
-
+                
+                // Estructura de datos corregida según el modelo
                 const teamData = {
                     nombre: nombre.trim(),
                     ownerId: user.uid,
                     createdAt: serverTimestamp(),
-                    members: [user.uid],
-                    members_roles: {
-                        [user.uid]: { role: 'Owner', displayName: displayName, email: user.email }
+                    members: {
+                        [user.uid]: { role: 'Administrador' }
                     }
                 };
 
@@ -61,10 +55,7 @@ const TeamCreate = () => {
                 transaction.update(profileRef, { teamId: newTeamRef.id });
             });
 
-            if (refreshProfile) {
-                await refreshProfile();
-            }
-            
+            await refreshProfile();
             navigate('/dashboard');
 
         } catch (err) {

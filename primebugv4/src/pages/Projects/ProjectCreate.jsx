@@ -1,7 +1,7 @@
 // src/pages/Projects/ProjectCreate.jsx
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { addDoc, collection, serverTimestamp, doc, updateDoc, arrayUnion } from 'firebase/firestore'; // Importaciones añadidas
 import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { FaProjectDiagram, FaSignature, FaAlignLeft, FaBug, FaTimes } from 'react-icons/fa';
@@ -30,7 +30,7 @@ const ProjectCreate = () => {
             return;
         }
         if (!profile?.teamId) {
-            setError('No perteneces a ningún equipo para crear proyectos.');
+            setError('No perteneces a ningún equipo para crear proyectos. Debes crear o unirte a un equipo primero.');
             return;
         }
 
@@ -38,21 +38,32 @@ const ProjectCreate = () => {
         setError('');
 
         try {
-            // --- CORRECCIÓN APLICADA AQUÍ ---
-            // Se asegura que `members` se guarde como un array de UIDs, no como un mapa.
-            await addDoc(collection(db, 'projects'), {
+            // 1. Crear el documento del proyecto
+            const projectData = {
                 nombre: formData.nombre.trim(),
                 descripcion: formData.descripcion.trim(),
                 sigla_incidencia: formData.sigla_incidencia.trim(),
                 teamId: profile.teamId,
                 ownerId: user.uid,
                 creado_en: serverTimestamp(),
-                members: [user.uid] // <-- ESTA ES LA LÍNEA CORREGIDA
+                members: {
+                  [user.uid]: { role: 'Creador' }
+                }
+            };
+            const projectRef = await addDoc(collection(db, 'projects'), projectData);
+
+            // --- LÓGICA AÑADIDA ---
+            // 2. Actualizar el documento del equipo con el ID del nuevo proyecto
+            const teamRef = doc(db, 'teams', profile.teamId);
+            await updateDoc(teamRef, {
+                projectIds: arrayUnion(projectRef.id)
             });
+            // --- FIN DE LA LÓGICA AÑADIDA ---
+
             navigate('/proyectos');
         } catch (err) {
             console.error("Error al crear proyecto:", err);
-            setError('Hubo un problema al crear el proyecto.');
+            setError('Hubo un problema al crear el proyecto. Asegúrate de tener permisos.');
         } finally {
             setIsSubmitting(false);
         }

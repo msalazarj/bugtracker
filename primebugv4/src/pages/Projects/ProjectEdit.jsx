@@ -1,73 +1,87 @@
 // src/pages/Projects/ProjectEdit.jsx
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useParams, Link } from 'react-router-dom';
-import { doc, getDoc, updateDoc, collection, getDocs, serverTimestamp } from 'firebase/firestore';
+import { useNavigate, useParams } from 'react-router-dom';
+import { doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../firebase';
-import { FaSave, FaTimes, FaProjectDiagram, FaTag, FaFileAlt, FaCalendarAlt, FaUserTie, FaCheckCircle } from 'react-icons/fa';
+import { useAuth } from '../../contexts/AuthContext'; // Importar useAuth
+import { 
+    FaSave, FaProjectDiagram, FaTag, FaFileAlt, 
+    FaRegClock, FaRegPauseCircle, FaRegPlayCircle, FaBan 
+} from 'react-icons/fa';
+
+export const projectStatusConfig = {
+    Planeado: { icon: FaRegClock, color: 'text-blue-500', bg: 'bg-blue-50' },
+    Activo: { icon: FaRegPlayCircle, color: 'text-green-500', bg: 'bg-green-50' },
+    'En Espera': { icon: FaRegPauseCircle, color: 'text-amber-500', bg: 'bg-amber-50' },
+    Cerrado: { icon: FaBan, color: 'text-red-500', bg: 'bg-red-50' },
+};
+
+const StatusCard = ({ status, selectedStatus, onChange }) => {
+    const { icon: Icon, color } = projectStatusConfig[status];
+    const isSelected = status === selectedStatus;
+
+    return (
+        <div 
+            className={`cursor-pointer rounded-xl p-3 flex flex-col items-center justify-center text-center border-2 transition-all duration-200 ${isSelected ? `border-indigo-600 bg-indigo-50` : `border-slate-200 bg-white hover:border-slate-300`}`}
+            onClick={() => onChange(status)}
+        >
+            <Icon className={`w-6 h-6 mb-1.5 ${isSelected ? 'text-indigo-600' : color}`} />
+            <span className={`font-bold text-xs ${isSelected ? 'text-indigo-800' : 'text-slate-600'}`}>{status}</span>
+        </div>
+    );
+};
 
 const ProjectEdit = () => {
   const navigate = useNavigate();
   const { projectId } = useParams();
+  const { profile } = useAuth(); // Obtener perfil del usuario
   
   const [formData, setFormData] = useState({
     nombre: '',
     sigla_incidencia: '',
     descripcion: '',
     estado: 'Planeado',
-    fecha_inicio: '',
-    fecha_fin: '',
-    manager_id: '',
   });
   
-  const [managers, setManagers] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const [formErrors, setFormErrors] = useState({});
 
   useEffect(() => {
-    const loadData = async () => {
+    const loadProject = async () => {
       setIsLoading(true);
-      setError(null);
       try {
-        // 1. Carga de perfiles (Managers) y datos del proyecto en paralelo
-        const [projectSnap, profilesSnap] = await Promise.all([
-          getDoc(doc(db, "projects", projectId)),
-          getDocs(collection(db, "profiles"))
-        ]);
-
+        const projectSnap = await getDoc(doc(db, "projects", projectId));
         if (projectSnap.exists()) {
           const projectData = projectSnap.data();
+
+          // Verificación de seguridad en UI: el teamId del proyecto debe coincidir con el del perfil del usuario
+          if (profile && projectData.teamId !== profile.teamId) {
+              setError("No tienes permiso para editar este proyecto.");
+              return;
+          }
+
           setFormData({
-            ...projectData,
-            // Aseguramos que los valores sean strings para evitar errores en inputs controlados
             nombre: projectData.nombre || '',
             sigla_incidencia: projectData.sigla_incidencia || '',
             descripcion: projectData.descripcion || '',
             estado: projectData.estado || 'Planeado',
-            manager_id: projectData.manager_id || '',
-            fecha_inicio: projectData.fecha_inicio || '',
-            fecha_fin: projectData.fecha_fin || '',
           });
         } else {
           setError("El proyecto solicitado no existe.");
         }
-
-        const profiles = profilesSnap.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-        setManagers(profiles);
-
       } catch (err) {
-        console.error("Error al cargar datos:", err);
+        console.error("Error al cargar proyecto:", err);
         setError("Error de conexión con la base de datos.");
       } finally {
         setIsLoading(false);
       }
     };
-    loadData();
-  }, [projectId]);
+    if (profile) { // Solo cargar si el perfil del usuario está disponible
+        loadProject();
+    }
+  }, [projectId, profile]);
   
   const validateForm = () => {
     const errors = {};
@@ -79,143 +93,98 @@ const ProjectEdit = () => {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    if (name === "sigla_incidencia") {
-        setFormData(prev => ({ ...prev, [name]: value.toUpperCase().replace(/\s+/g, '') }));
-    } else {
-        setFormData(prev => ({ ...prev, [name]: value }));
-    }
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+  
+  const handleStatusChange = (status) => {
+      setFormData(prev => ({ ...prev, estado: status }));
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!validateForm()) return;
 
+    if (!profile?.teamId) {
+        setError("Error crítico: No se puede identificar tu equipo.");
+        return;
+    }
+
     setIsSubmitting(true);
     setError(null);
     
     try {
-        const selectedManager = managers.find(m => m.id === formData.manager_id);
         const projectRef = doc(db, "projects", projectId);
-        
-        // 2. Actualización en Firestore
-        await updateDoc(projectRef, {
+        // Inyectar el teamId para asegurar su preservación durante la actualización
+        const dataToUpdate = {
             ...formData,
-            manager_nombre: selectedManager ? selectedManager.nombre_completo : 'Sin asignar',
+            teamId: profile.teamId, 
             actualizado_en: serverTimestamp()
-        });
-
-        navigate(`/proyectos/${projectId}`);
+        };
+        await updateDoc(projectRef, dataToUpdate);
+        navigate(`/proyectos`);
     } catch(err) {
-        setError('No se pudieron guardar los cambios en el servidor.');
+        setError('No se pudieron guardar los cambios.');
         console.error(err);
     } finally {
         setIsSubmitting(false);
     }
   };
 
-  const inputFieldClass = "input-field w-full pl-10 border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500";
-  const labelFieldClass = "block text-sm font-semibold text-gray-700";
-  const errorFieldClass = "text-red-500 text-xs mt-1";
-
   if (isLoading) {
-    return <div className="p-10 text-center font-bold text-indigo-600 animate-pulse">Cargando proyecto...</div>
+    return <div className="p-10 text-center font-bold">Cargando...</div>
   }
 
   return (
-    <div className="container mx-auto p-4 max-w-2xl animate-fade-in">
-      <div className="flex items-center gap-2 mb-6 text-gray-400">
-          <Link to="/proyectos" className="hover:text-indigo-600">Proyectos</Link>
-          <span>/</span>
-          <span className="text-gray-900 font-bold">Editar</span>
+    <div className="max-w-3xl mx-auto p-4 md:p-8">
+      <div className="mb-8">
+          <h1 className="text-3xl font-bold text-slate-800">Editar Proyecto</h1>
+          <p className="text-slate-500 mt-1">Ajusta los detalles y el estado de tu proyecto.</p>
       </div>
-
-      <h1 className="text-3xl font-extrabold text-gray-900 mb-8">Editar Proyecto</h1> 
       
-      {error && <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 text-red-700 rounded-r-md">{error}</div>}
+      {error && <div className="mb-6 p-4 bg-red-50 text-red-700 rounded-lg">{error}</div>}
       
-      <form onSubmit={handleSubmit} className="space-y-6 bg-white p-6 sm:p-8 shadow-xl rounded-xl border border-gray-100">
-        <div>
-          <label htmlFor="nombre" className={labelFieldClass}>Nombre del Proyecto</label>
-          <div className="relative mt-1">
-              <FaProjectDiagram className="absolute top-1/2 left-3 -translate-y-1/2 text-gray-400" />
-              <input type="text" name="nombre" id="nombre" value={formData.nombre} onChange={handleChange} className={inputFieldClass} />
-          </div>
-          {formErrors.nombre && <p className={errorFieldClass}>{formErrors.nombre}</p>}
-        </div>
+      <form onSubmit={handleSubmit} className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-slate-200">
+        <div className="space-y-10">
 
-        <div>
-          <label htmlFor="sigla_incidencia" className={labelFieldClass}>Sigla (ID de Tickets)</label>
-           <div className="relative mt-1">
-              <FaTag className="absolute top-1/2 left-3 -translate-y-1/2 text-gray-400" />
-              <input type="text" name="sigla_incidencia" id="sigla_incidencia" value={formData.sigla_incidencia} onChange={handleChange} className={inputFieldClass} maxLength="6" />
-          </div>
-          {formErrors.sigla_incidencia && <p className={errorFieldClass}>{formErrors.sigla_incidencia}</p>}
-        </div>
-
-        <div>
-          <label htmlFor="descripcion" className={labelFieldClass}>Descripción</label>
-          <div className="relative mt-1">
-            <FaFileAlt className="absolute top-3 left-3 text-gray-400" />
-            <textarea name="descripcion" id="descripcion" value={formData.descripcion} onChange={handleChange} rows="4" className={`${inputFieldClass} pt-2`}></textarea>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label htmlFor="estado" className={labelFieldClass}>Estado</label>
-              <div className="relative mt-1">
-                <FaCheckCircle className="absolute top-1/2 left-3 -translate-y-1/2 text-gray-400" />
-                <select name="estado" id="estado" value={formData.estado} onChange={handleChange} className={inputFieldClass}>
-                    <option value="Planeado">Planeado</option>
-                    <option value="Activo">Activo</option>
-                    <option value="En Espera">En Espera</option>
-                    <option value="Cerrado">Cerrado</option>
-                </select>
-              </div>
+            <div className="form-field">
+                <label htmlFor="nombre" className="form-label">
+                    <FaProjectDiagram className="form-label-icon" /> Nombre del Proyecto
+                </label>
+                <input id="nombre" name="nombre" type="text" value={formData.nombre} onChange={handleChange} className="input-underlined" placeholder="Ej: Nuevo Sitio Web Corporativo" required />
+                {formErrors.nombre && <p className="text-red-500 text-xs mt-1">{formErrors.nombre}</p>}
             </div>
 
-            <div>
-              <label htmlFor="manager_id" className={labelFieldClass}>Project Manager</label>
-              <div className="relative mt-1">
-                <FaUserTie className="absolute top-1/2 left-3 -translate-y-1/2 text-gray-400" />
-                <select name="manager_id" id="manager_id" value={formData.manager_id} onChange={handleChange} className={inputFieldClass}>
-                    <option value="">-- Seleccionar Manager --</option>
-                    {managers.map(manager => (
-                      <option key={manager.id} value={manager.id}>{manager.nombre_completo}</option>
+            <div className="form-field">
+                <label htmlFor="sigla_incidencia" className="form-label">
+                    <FaTag className="form-label-icon" /> Sigla de Incidencia
+                </label>
+                <input id="sigla_incidencia" name="sigla_incidencia" type="text" value={formData.sigla_incidencia} onChange={handleChange} className="input-underlined" placeholder="Ej: SITWEB" maxLength="6" required />
+                {formErrors.sigla_incidencia && <p className="text-red-500 text-xs mt-1">{formErrors.sigla_incidencia}</p>}
+            </div>
+            
+            <div className="form-field">
+                <label className="form-label">Estado del Proyecto</label>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-2">
+                    {Object.keys(projectStatusConfig).map(status => (
+                        <StatusCard key={status} status={status} selectedStatus={formData.estado} onChange={handleStatusChange} />
                     ))}
-                </select>
-              </div>
+                </div>
             </div>
-        </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <label htmlFor="fecha_inicio" className={labelFieldClass}>Fecha de Inicio</label>
-             <div className="relative mt-1">
-                <FaCalendarAlt className="absolute top-1/2 left-3 -translate-y-1/2 text-gray-400" />
-                <input type="date" name="fecha_inicio" id="fecha_inicio" value={formData.fecha_inicio} onChange={handleChange} className={inputFieldClass} />
+            <div className="form-field">
+                <label htmlFor="descripcion" className="form-label">
+                    <FaFileAlt className="form-label-icon" /> Descripción (Opcional)
+                </label>
+                <textarea id="descripcion" name="descripcion" value={formData.descripcion} onChange={handleChange} className="input-underlined" placeholder="Describe el objetivo principal del proyecto..." rows="4" />
             </div>
-          </div>
-          <div>
-            <label htmlFor="fecha_fin" className={labelFieldClass}>Fecha de Fin</label>
-             <div className="relative mt-1">
-                <FaCalendarAlt className="absolute top-1/2 left-3 -translate-y-1/2 text-gray-400" />
-                <input type="date" name="fecha_fin" id="fecha_fin" value={formData.fecha_fin} onChange={handleChange} className={inputFieldClass} />
-            </div>
-            {formErrors.fecha_fin && <p className={errorFieldClass}>{formErrors.fecha_fin}</p>}
-          </div>
         </div>
         
-        <div className="flex justify-end space-x-4 pt-6 border-t">
-          <Link to={`/proyectos/${projectId}`} className="px-6 py-2 rounded-lg text-gray-600 font-bold hover:bg-gray-100 transition-colors">
+        <div className="flex items-center justify-end gap-4 mt-10 pt-6 border-t border-slate-100">
+          <button type="button" onClick={() => navigate(-1)} className="btn-secondary">
             Cancelar
-          </Link>
-          <button 
-            type="submit" 
-            disabled={isSubmitting || isLoading} 
-            className="bg-indigo-600 text-white px-8 py-2 rounded-lg font-bold shadow-lg hover:bg-indigo-700 disabled:bg-indigo-300 transition-all"
-          >
-            {isSubmitting ? 'Guardando...' : 'Guardar Cambios'}
+          </button>
+          <button type="submit" disabled={isSubmitting || !profile?.teamId} className="btn-primary">
+            <FaSave /> {isSubmitting ? 'Guardando...' : 'Guardar Cambios'}
           </button>
         </div>
       </form>

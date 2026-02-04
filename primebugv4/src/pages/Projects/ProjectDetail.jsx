@@ -1,15 +1,15 @@
 // src/pages/Projects/ProjectDetail.jsx
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { doc, onSnapshot, collection, query, where, updateDoc } from 'firebase/firestore';
+import { doc, onSnapshot, collection, query, where } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { 
     FaUsers, FaFileAlt, FaEdit, FaExclamationCircle, 
     FaTasks, FaCheckCircle, FaRedo, FaLock 
 } from 'react-icons/fa';
+import { projectStatusConfig } from './ProjectEdit.jsx';
 
-// --- Componente: Tarjeta de Acción del Proyecto ---
 const ActionCard = ({ to, icon, title, description, badgeText, badgeColor, loading }) => {
     if (loading) {
         return <div className="bg-slate-200 rounded-xl h-40 animate-pulse"></div>;
@@ -30,7 +30,6 @@ const ActionCard = ({ to, icon, title, description, badgeText, badgeColor, loadi
     );
 };
 
-// --- Componente: Tarjeta de Resumen de Bugs por Estado ---
 const BugStatusCard = ({ to, icon, title, value, colorClass, loading }) => {
     if (loading) {
         return <div className="bg-slate-200 rounded-xl h-24 animate-pulse"></div>
@@ -48,51 +47,42 @@ const BugStatusCard = ({ to, icon, title, value, colorClass, loading }) => {
     )
 }
 
+// 3. Componente de insignia de estado CORREGIDO
+const StatusBadge = ({ status }) => {
+    const config = projectStatusConfig[status];
+    if (!config) return null; // No renderizar nada si el estado no es válido
+
+    const IconComponent = config.icon; // Asignar el componente a una variable con mayúscula
+    
+    return (
+        <div className={`inline-flex items-center gap-2 text-sm font-bold px-3 py-1 rounded-full ${config.bg} ${config.color}`}>
+            <IconComponent /> {/* Renderizar el icono como un componente */}
+            <span>{status}</span>
+        </div>
+    );
+};
+
 const ProjectDetail = () => {
   const { projectId } = useParams();
   const { user } = useAuth();
   
-  // Estados del componente
   const [project, setProject] = useState(null);
   const [bugStats, setBugStats] = useState({ abiertos: 0, enProgreso: 0, resueltos: 0, cerrados: 0, reabiertos: 0 });
   const [loading, setLoading] = useState(true);
   const [accessDenied, setAccessDenied] = useState(false);
 
-  // Efecto para cargar datos del proyecto, ahora con migración de datos
   useEffect(() => {
     if (!user || !projectId) return;
 
     const projectRef = doc(db, "projects", projectId);
-    const unsubscribe = onSnapshot(projectRef, async (docSnap) => {
+    const unsubscribe = onSnapshot(projectRef, (docSnap) => {
       if (docSnap.exists()) {
         const projectData = docSnap.data();
-        let members = projectData.members || {};
-        let isMember = false;
-
-        // Lógica de migración de datos y comprobación de acceso
-        if (Array.isArray(members)) {
-            console.log("ProjectDetail: Formato de miembros antiguo (Array) detectado. Migrando...");
-            isMember = members.includes(user.uid);
-            
-            const newMembersMap = members.reduce((acc, uid) => {
-                acc[uid] = { role: 'Developer' }; // Asigna un rol por defecto
-                return acc;
-            }, {});
-
-            try {
-                await updateDoc(projectRef, { members: newMembersMap });
-                members = newMembersMap; // Usa los nuevos datos para el renderizado actual
-                console.log("ProjectDetail: Migración de datos exitosa.");
-            } catch (migrationError) {
-                console.error("Error al migrar miembros del proyecto:", migrationError);
-            }
-        } else {
-            // Formato nuevo (Map) o sin miembros
-            isMember = members ? Object.keys(members).includes(user.uid) : false;
-        }
+        const members = projectData.members || {};
+        const isMember = user.uid in members;
 
         if (isMember) {
-          setProject({ id: docSnap.id, ...projectData, members: members });
+          setProject({ id: docSnap.id, ...projectData });
           setAccessDenied(false);
         } else {
           setAccessDenied(true);
@@ -112,9 +102,8 @@ const ProjectDetail = () => {
     return () => unsubscribe();
   }, [projectId, user]);
 
-  // Efecto para cargar estadísticas de bugs
   useEffect(() => {
-    if (!projectId) return;
+    if (!projectId || accessDenied) return;
 
     const bugsQuery = query(collection(db, "bugs"), where("proyecto_id", "==", projectId));
     
@@ -132,10 +121,8 @@ const ProjectDetail = () => {
     });
 
     return () => unsubscribeBugs();
-  }, [projectId]);
+  }, [projectId, accessDenied]);
 
-
-  // --- Renderizado de Estados ---
   if (loading) {
      return (
        <div className="animate-pulse space-y-8">
@@ -143,14 +130,6 @@ const ProjectDetail = () => {
          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="h-40 bg-slate-200 rounded-xl"></div>
             <div className="h-40 bg-slate-200 rounded-xl"></div>
-         </div>
-         <div className="mt-8 h-8 w-1/4 bg-slate-200 rounded-lg"></div>
-         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-5">
-            <div className="h-24 bg-slate-200 rounded-xl"></div>
-            <div className="h-24 bg-slate-200 rounded-xl"></div>
-            <div className="h-24 bg-slate-200 rounded-xl"></div>
-            <div className="h-24 bg-slate-200 rounded-xl"></div>
-             <div className="h-24 bg-slate-200 rounded-xl"></div>
          </div>
        </div>
      );
@@ -169,30 +148,30 @@ const ProjectDetail = () => {
   
   if (!project) return null;
 
-  // --- Renderizado Principal ---
   return (
     <div className="space-y-8">
-        {/* Cabecera del Proyecto */}
         <header className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
             <div className="flex flex-col sm:flex-row justify-between sm:items-start gap-4">
                 <div>
-                    <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">{project.nombre}</h1>
+                    <div className="flex items-center gap-4 mb-2">
+                        <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">{project.nombre}</h1>
+                        {project.estado && <StatusBadge status={project.estado} />}
+                    </div>
                     <p className="text-slate-500 mt-1 max-w-3xl">{project.descripcion?.replace(/<p>|<\/p>/g, '')}</p>
                 </div>
-                <Link to={`/proyectos/${projectId}/editar`} className="btn-secondary flex-shrink-0 flex items-center gap-2">
+                <Link to={`/proyectos/${projectId}/editar`} className="btn-secondary flex-shrink-0">
                     <FaEdit /> Editar Proyecto
                 </Link>
             </div>
         </header>
 
-        {/* Grilla de Tarjetas de Acción */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <ActionCard 
                 to={`/proyectos/${projectId}/miembros`}
                 icon={<FaUsers className="text-xl text-blue-800"/>}
                 title="Gestionar Miembros"
                 description="Añade, elimina o modifica los roles de los participantes del proyecto."
-                badgeText={`${project.members ? Object.keys(project.members).length : 0} Miembros`}
+                badgeText={`${Object.keys(project.members || {}).length} Miembros`}
                 badgeColor="bg-blue-100"
                 loading={loading}
             />
@@ -206,7 +185,6 @@ const ProjectDetail = () => {
             />
         </div>
 
-        {/* Sección de Resumen de Bugs */}
         <div>
             <h2 className="text-2xl font-bold text-slate-800 mb-4">Resumen de Bugs</h2>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-5">

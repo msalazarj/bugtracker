@@ -44,6 +44,13 @@ const Sidebar = ({ isSidebarOpen }) => {
         }
     };
 
+    // --- LÓGICA DE INICIALES MEJORADA ---
+    const getInitials = () => {
+        if (profile?.nombre_completo) return profile.nombre_completo.charAt(0).toUpperCase();
+        if (user?.email) return user.email.charAt(0).toUpperCase();
+        return 'U';
+    };
+
     return (
         <aside className={`fixed top-0 left-0 h-full bg-slate-900 text-white transition-all duration-300 z-30 shadow-2xl ${isSidebarOpen ? 'w-64' : 'w-20'}`}>
             <div className="flex flex-col h-full">
@@ -73,7 +80,7 @@ const Sidebar = ({ isSidebarOpen }) => {
                         <NavItem to="/equipos/crear" icon={<FaPlusCircle />} isSidebarOpen={isSidebarOpen}>Crear Equipo</NavItem>
                     )}
 
-                    {/* MENÚ CONTEXTUAL DE PROYECTO (si aplica) */}
+                    {/* MENÚ CONTEXTUAL DE PROYECTO */}
                     {projectId && hasTeam && (
                         <div className="animate-fade-in">
                             <SidebarSeparator isSidebarOpen={isSidebarOpen} />
@@ -83,7 +90,6 @@ const Sidebar = ({ isSidebarOpen }) => {
                                 </div>
                             )}
                             <NavItem to={`/proyectos/${projectId}/detalles`} icon={<FaFolder />} isSidebarOpen={isSidebarOpen}>Detalles</NavItem>
-                            {/* --- LÍNEA CORREGIDA --- */}
                             <NavItem to={`/proyectos/${projectId}/miembros`} icon={<FaUsers />} isSidebarOpen={isSidebarOpen}>Miembros</NavItem>
                             <NavItem to={`/proyectos/${projectId}/bugs`} icon={<FaBug />} isSidebarOpen={isSidebarOpen} end={false}>Bugs</NavItem>
                             <NavItem to={`/proyectos/${projectId}/documentacion`} icon={<FaFileAlt />} isSidebarOpen={isSidebarOpen}>Documentación</NavItem>
@@ -91,11 +97,11 @@ const Sidebar = ({ isSidebarOpen }) => {
                     )}
                 </nav>
 
-                {/* SECCIÓN DE USUARIO */}
+                {/* SECCIÓN DE USUARIO - CORREGIDA Y MEJORADA */}
                 <div className="px-3 py-4 border-t border-slate-700/50 bg-slate-900/50">
                      <div className={`flex items-center ${isSidebarOpen ? 'gap-x-3 px-3' : 'justify-center'}`}>
                         <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center font-black text-white shadow-lg border border-white/10 flex-shrink-0">
-                            {profile?.nombre_completo?.charAt(0) || user?.email?.charAt(0).toUpperCase() || 'U'}
+                            {getInitials()}
                         </div>
                         {isSidebarOpen && (
                             <div className="flex-1 min-w-0">

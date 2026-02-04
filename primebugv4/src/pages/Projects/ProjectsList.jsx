@@ -1,15 +1,14 @@
 // src/pages/Projects/ProjectsList.jsx
-import React, { useState, useEffect } from 'react';
-import { collection, query, where, onSnapshot, getDocs } from 'firebase/firestore';
+import React, { useState, useEffect, useCallback } from 'react';
+import { collection, query, where, getDocs, doc, getDoc, documentId } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { Link } from 'react-router-dom';
 import { FaPlus, FaFolder, FaUserFriends, FaBug, FaUsers } from 'react-icons/fa';
 import DOMPurify from 'dompurify';
 import Tippy from '@tippyjs/react';
-import 'tippy.js/dist/tippy.css'; // Estilos para los tooltips
+import 'tippy.js/dist/tippy.css';
 
-// --- Skeleton Loader para las Tarjetas Rediseñadas ---
 const CardSkeleton = () => (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col animate-pulse">
         <div className="p-5 border-b border-slate-100"><div className="h-6 bg-slate-200 rounded w-3/4"></div></div>
@@ -28,9 +27,8 @@ const CardSkeleton = () => (
     </div>
 );
 
-// --- Tarjeta de Proyecto Atractiva e Informativa ---
 const ProjectCard = ({ project }) => {
-    const memberCount = project.members?.length || 0;
+    const memberCount = Object.keys(project.members || {}).length;
     const bugStats = project.bugStats || { total: 0, Abierto: 0, 'En Progreso': 0, Resuelto: 0, Cerrado: 0, Reabierto: 0 };
     const cleanDescriptionHTML = DOMPurify.sanitize(project.descripcion);
 
@@ -82,16 +80,9 @@ const ProjectCard = ({ project }) => {
                         <span className="text-xs font-semibold text-slate-600 truncate max-w-[120px]">{project.team_name || 'N/A'}</span>
                     </div>
                     <div className="flex items-center" title={`${memberCount} miembros`}>
-                        {project.members_details?.slice(0, 3).map((member, index) => (
-                            <div key={member.uid} className={`w-8 h-8 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center text-xs font-bold border-2 border-white ${index > 0 ? '-ml-3' : ''}`}>
-                                {member.displayName.charAt(0)}
-                            </div>
-                        ))}
-                        {memberCount > 3 && (
-                            <div className="w-8 h-8 rounded-full bg-slate-300 text-slate-700 flex items-center justify-center text-xs font-bold border-2 border-white -ml-3">
-                               +{memberCount - 3}
-                            </div>
-                        )}
+                        {/* Aquí necesitarías un mapeo de IDs a detalles de miembros si quisieras mostrar avatares */}
+                        <FaUserFriends />
+                        <span className="ml-2 text-sm">{memberCount}</span>
                     </div>
                 </div>
             </div>
@@ -99,31 +90,39 @@ const ProjectCard = ({ project }) => {
     );
 };
 
-// --- Componente Principal de la Lista de Proyectos ---
 const ProjectsList = () => {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
-  const { user } = useAuth();
+  const { user, profile } = useAuth(); // Usamos el perfil desde el AuthContext
 
-  useEffect(() => {
-    if (!user) return;
+  // Se usa useCallback para evitar re-crear la función en cada render
+  const fetchProjects = useCallback(async () => {
+    if (!user || !profile?.teamId) {
+        setLoading(false);
+        return;
+    }
 
     setLoading(true);
-    const projectsQuery = query(collection(db, "projects"), where("members", "array-contains", user.uid));
+    try {
+      // 1. Obtener documento del equipo para los IDs de proyectos
+      const teamRef = doc(db, 'teams', profile.teamId);
+      const teamSnap = await getDoc(teamRef);
 
-    const unsubscribe = onSnapshot(projectsQuery, async (projectsSnapshot) => {
-      const projectsData = projectsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      const projectIds = projectsData.map(p => p.id);
-
-      if (projectIds.length === 0) {
-          setProjects([]);
-          setLoading(false);
-          return;
+      if (!teamSnap.exists() || !teamSnap.data().projectIds || teamSnap.data().projectIds.length === 0) {
+        setProjects([]);
+        setLoading(false);
+        return;
       }
+      const projectIds = teamSnap.data().projectIds;
 
+      // 2. Obtener los documentos de los proyectos
+      const projectsQuery = query(collection(db, 'projects'), where(documentId(), 'in', projectIds));
+      const projectsSnapshot = await getDocs(projectsQuery);
+      const projectsData = projectsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+      // 3. Obtener las estadísticas de bugs (igual que antes)
       const bugsQuery = query(collection(db, "bugs"), where("proyecto_id", "in", projectIds));
       const bugsSnapshot = await getDocs(bugsQuery);
-
       const statsByProject = {};
       bugsSnapshot.forEach(bugDoc => {
           const bug = bugDoc.data();
@@ -138,20 +137,24 @@ const ProjectsList = () => {
           }
       });
 
+      // 4. Combinar proyectos y estadísticas
       const projectsWithStats = projectsData.map(project => ({
           ...project,
           bugStats: statsByProject[project.id] || { total: 0, Abierto: 0, 'En Progreso': 0, Resuelto: 0, Cerrado: 0, Reabierto: 0 }
       }));
 
       setProjects(projectsWithStats);
-      setLoading(false);
-    }, (error) => {
-      console.error("Error al cargar proyectos:", error);
-      setLoading(false);
-    });
 
-    return () => unsubscribe();
-  }, [user]);
+    } catch (error) {
+      console.error("Error al cargar la lista de proyectos:", error);
+    } finally {
+      setLoading(false);
+    }
+  }, [user, profile]);
+
+  useEffect(() => {
+    fetchProjects();
+  }, [fetchProjects]);
 
   return (
     <div className="space-y-8">

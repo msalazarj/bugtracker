@@ -1,129 +1,52 @@
 // src/services/useProjectMembers.js
 import { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { 
-  doc, 
-  onSnapshot, 
-  updateDoc, 
-  collection, 
-  getDocs,
-  getDoc
-} from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 
 /**
- * Hook para gestionar los miembros de un proyecto en tiempo real con Firestore.
+ * Hook personalizado para obtener los perfiles de los miembros de un proyecto.
+ * Acepta una lista de IDs de miembros y devuelve los documentos de perfil correspondientes.
+ * @param {string[]} memberIds - Una lista de UIDs de los miembros del proyecto.
+ * @returns {{members: object[], loading: boolean, error: Error | null}}
  */
-export const useProjectMembers = (projectId) => {
-    const [project, setProject] = useState(null);
+const useProjectMembers = (memberIds) => {
     const [members, setMembers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-    
-    const [availableUsers, setAvailableUsers] = useState([]);
-    const [selectedUserId, setSelectedUserId] = useState('');
 
-    // 1. Escuchar el proyecto y sus miembros en tiempo real
     useEffect(() => {
-        if (!projectId) return;
+        // El hook no hará nada si no recibe una lista de IDs válida.
+        if (!memberIds || memberIds.length === 0) {
+            setLoading(false);
+            setMembers([]);
+            return;
+        }
 
-        setLoading(true);
-        const projectRef = doc(db, "projects", projectId);
-
-        const unsubscribe = onSnapshot(projectRef, async (docSnap) => {
-            if (docSnap.exists()) {
-                const projectData = { id: docSnap.id, ...docSnap.data() };
-                setProject(projectData);
-                setMembers(projectData.miembros || []);
+        const fetchMembers = async () => {
+            setLoading(true);
+            try {
+                // Usamos Promise.all para buscar todos los perfiles de los miembros en paralelo.
+                const memberPromises = memberIds.map(id => getDoc(doc(db, 'profiles', id)));
+                const memberDocs = await Promise.all(memberPromises);
                 
-                // Una vez tenemos los miembros, cargamos los usuarios disponibles
-                await fetchAvailableUsers(projectData.miembros || []);
-            } else {
-                setError("El proyecto no existe.");
+                // Mapeamos los resultados a un array de objetos de perfil, incluyendo el ID.
+                const memberProfiles = memberDocs
+                    .filter(doc => doc.exists()) // Nos aseguramos de que el perfil exista
+                    .map(doc => ({ id: doc.id, ...doc.data() }));
+                
+                setMembers(memberProfiles);
+            } catch (err) {
+                console.error("Error fetching project members:", err);
+                setError(err);
+            } finally {
+                setLoading(false);
             }
-            setLoading(false);
-        }, (err) => {
-            setError(err.message);
-            setLoading(false);
-        });
+        };
 
-        return () => unsubscribe();
-    }, [projectId]);
+        fetchMembers();
+    }, [memberIds]); // El hook se volverá a ejecutar solo si la lista de IDs cambia.
 
-    // 2. Cargar todos los perfiles del sistema para el selector
-    const fetchAvailableUsers = async (currentMembers) => {
-        try {
-            const profilesSnap = await getDocs(collection(db, "profiles"));
-            const allUsers = profilesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-            
-            // Filtramos: usuarios que NO estén ya en el proyecto
-            const memberIds = new Set(currentMembers.map(m => m.id));
-            const filtered = allUsers.filter(u => !memberIds.has(u.id));
-            
-            setAvailableUsers(filtered);
-        } catch (err) {
-            console.error("Error cargando usuarios disponibles:", err);
-        }
-    };
-
-    // 3. Añadir miembro (Actualización atómica en Firestore)
-    const addMember = async () => {
-        if (!selectedUserId || !projectId) return;
-
-        try {
-            const userToAdd = availableUsers.find(u => u.id === selectedUserId);
-            const newMember = {
-                id: userToAdd.id,
-                name: userToAdd.nombre_completo || userToAdd.name,
-                email: userToAdd.email,
-                role: 'Viewer',
-                join_date: new Date().toISOString().split('T')[0]
-            };
-
-            const projectRef = doc(db, "projects", projectId);
-            await updateDoc(projectRef, {
-                miembros: [...members, newMember]
-            });
-
-            setSelectedUserId('');
-        } catch (err) {
-            alert("Error al añadir miembro: " + err.message);
-        }
-    };
-
-    // 4. Actualizar Rol
-    const updateMemberRole = async (userId, newRole) => {
-        try {
-            const updatedMembers = members.map(m => 
-                m.id === userId ? { ...m, role: newRole } : m
-            );
-            const projectRef = doc(db, "projects", projectId);
-            await updateDoc(projectRef, { miembros: updatedMembers });
-        } catch (err) {
-            console.error("Error al actualizar rol:", err);
-        }
-    };
-
-    // 5. Eliminar miembro
-    const removeMember = async (userId) => {
-        try {
-            const updatedMembers = members.filter(m => m.id !== userId);
-            const projectRef = doc(db, "projects", projectId);
-            await updateDoc(projectRef, { miembros: updatedMembers });
-        } catch (err) {
-            console.error("Error al eliminar miembro:", err);
-        }
-    };
-
-    return { 
-        project, 
-        members, 
-        loading, 
-        error,
-        availableUsers,
-        selectedUserId,
-        setSelectedUserId,
-        addMember,
-        updateMemberRole,
-        removeMember
-    };
+    return { members, loading, error };
 };
+
+export default useProjectMembers;

@@ -1,0 +1,10 @@
+{
+  "dependencies": {
+    "react-dropzone": "^14.4.0",
+    "react-tooltip": "^5.30.0"
+    },
+  "resolutions": {
+  "react": "^18.2.0",
+  "react-dom": "^18.2.0"
+}
+}

@@ -20,16 +20,12 @@ export const AuthProvider = ({ children }) => {
     const [loading, setLoading] = useState(true);
     const [profile, setProfile] = useState(null);
 
-    // La función `refreshProfile` se mantiene como una utilidad, aunque el listener ya hace el trabajo principal.
     const refreshProfile = useCallback(async () => {
         if (!user) return;
         try {
             const profileRef = doc(db, 'profiles', user.uid);
             const docSnap = await getDoc(profileRef);
-            if (docSnap.exists()) {
-                // Forzar la actualización del estado del perfil
-                setProfile(docSnap.data());
-            }
+            if (docSnap.exists()) { setProfile(docSnap.data()); }
         } catch (error) {
             console.error("AuthContext: Error en recarga manual del perfil:", error);
         }
@@ -38,35 +34,27 @@ export const AuthProvider = ({ children }) => {
     useEffect(() => {
         let profileUnsubscribe = null;
 
-        // Listener principal para cambios de autenticación del usuario
         const authUnsubscribe = onAuthStateChanged(auth, (currentUser) => {
-            // Si ya hay una suscripción al perfil anterior, se limpia.
-            if (profileUnsubscribe) {
-                profileUnsubscribe();
-                profileUnsubscribe = null;
-            }
-
-            setUser(currentUser);
+            if (profileUnsubscribe) { profileUnsubscribe(); }
 
             if (currentUser) {
-                // --- ¡LA MEJORA CLAVE ESTÁ AQUÍ! ---
-                // Se establece un listener EN TIEMPO REAL (onSnapshot) para el perfil del usuario.
-                // Cualquier cambio en el documento del perfil en Firestore (ej: cambio de teamId)
-                // se reflejará INMEDIATAMENTE en el estado `profile` de la aplicación.
                 const profileRef = doc(db, 'profiles', currentUser.uid);
+                // Se establece un listener en tiempo real para el perfil.
                 profileUnsubscribe = onSnapshot(profileRef, (snap) => {
+                    // Se actualizan los estados de forma atómica al recibir el perfil.
                     if (snap.exists()) {
                         setProfile(snap.data());
                     } else {
-                        // Esto puede ocurrir si un usuario se autentica pero su perfil es borrado.
-                        console.warn("AuthContext: Perfil de usuario no encontrado en Firestore.");
+                        console.warn("AuthContext: Perfil de usuario no encontrado.");
                         setProfile(null);
                     }
-                    if (loading) setLoading(false); // Se quita el loading solo después del primer fetch.
+                    setUser(currentUser);
+                    setLoading(false);
                 }, (error) => {
                     console.error("AuthContext: Error en el listener del perfil:", error);
+                    setUser(currentUser);
                     setProfile(null);
-                    if (loading) setLoading(false);
+                    setLoading(false);
                 });
             } else {
                 // Si no hay usuario, se limpia todo.
@@ -76,14 +64,11 @@ export const AuthProvider = ({ children }) => {
             }
         });
 
-        // Función de limpieza al desmontar el componente
         return () => {
             authUnsubscribe();
-            if (profileUnsubscribe) {
-                profileUnsubscribe();
-            }
+            if (profileUnsubscribe) { profileUnsubscribe(); }
         };
-    }, []); // El array vacío asegura que esto se ejecute solo una vez.
+    }, []);
 
     const signIn = (email, password) => signInWithEmailAndPassword(auth, email, password);
     const signOut = () => firebaseSignOut(auth);
@@ -108,8 +93,6 @@ export const AuthProvider = ({ children }) => {
         user,
         profile,
         loading,
-        // El booleano `hasTeam` se puede derivar directamente del perfil, por lo que es más limpio calcularlo donde se necesita.
-        // Ejemplo: `const hasTeam = !!profile?.teamId;` en tu componente.
         hasTeam: !!profile?.teamId,
         refreshProfile,
         signIn,

@@ -1,92 +1,108 @@
 // src/services/dashboard.js
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, getDocs, query, where, getDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase';
 
-/**
- * Obtiene y procesa las estadísticas del dashboard para un usuario específico.
- * Calcula estadísticas generales de bugs y también por proyecto.
- * 
- * @param {string} userId - El UID del usuario logueado.
- * @returns {Promise<object>} Un objeto con las estadísticas del dashboard.
- */
 export const getDashboardStats = async (userId) => {
   if (!userId) {
-    return {
-      stats: { bugs: {}, projects: [] },
-      loading: false,
-      error: 'Usuario no autenticado.'
-    };
+    return { error: 'Usuario no autenticado.' };
   }
 
   try {
-    // 1. Obtener los proyectos donde el usuario es miembro
-    const projectsQuery = query(collection(db, 'projects'), where('members', 'array-contains', userId));
-    const projectsSnapshot = await getDocs(projectsQuery);
-    const userProjects = projectsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    const projectIds = userProjects.map(p => p.id);
+    const profileDocRef = doc(db, 'profiles', userId);
+    const profileSnap = await getDoc(profileDocRef);
+    const teamId = profileSnap.exists() ? profileSnap.data().teamId : null;
 
-    let allBugs = [];
-    // 2. Obtener todos los bugs de esos proyectos usando una consulta "in".
-    // Esta es la forma eficiente y ahora debería funcionar al estar la caché deshabilitada.
-    if (projectIds.length > 0) {
-      const bugsQuery = query(collection(db, 'bugs'), where('proyecto_id', 'in', projectIds));
-      const bugsSnapshot = await getDocs(bugsQuery);
-      allBugs = bugsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    if (!teamId) {
+      // Si no hay equipo, devolvemos un estado inicial sin consultas.
+      return { teamId: null, stats: {}, myTasks: [], projectsHealth: [], teamWorkload: [] };
     }
 
-    // 3. Procesar las estadísticas
-    const stats = {
-      totalProyectos: userProjects.length,
-      bugs: {
-        total: allBugs.length,
-        abiertos: 0,
-        enProgreso: 0,
-        reabiertos: 0,
-        resueltos: 0,
-        cerrados: 0,
-      },
-    };
+    // Definición de consultas
+    const projectsQuery = query(collection(db, 'projects'), where('teamId', '==', teamId));
+    const bugsQuery = query(collection(db, 'bugs'), where('teamId', '==', teamId));
+    const myTasksQuery = query(collection(db, 'bugs'), where('teamId', '==', teamId), where('assignedTo', '==', userId), where('status', '!=', 'Cerrado'));
+    const teamMembersQuery = query(collection(db, 'profiles'), where('teamId', '==', teamId));
 
-    const statsPorProyecto = {}; // Mapa para acumular stats por proyecto_id
+    const [projectsSnapshot, myTasksSnapshot, bugsSnapshot, teamMembersSnapshot] = await Promise.all([
+      getDocs(projectsQuery),
+      getDocs(myTasksQuery),
+      getDocs(bugsQuery),
+      getDocs(teamMembersQuery),
+    ]);
 
-    allBugs.forEach(bug => {
-      const estado = bug.estado;
-      const proyectoId = bug.proyecto_id;
+    // --- Cálculo de KPIs Superiores ---
+    let activeProjectsCount = 0;
+    projectsSnapshot.forEach(doc => {
+      if (doc.data().estado === 'Activo') activeProjectsCount++;
+    });
 
-      // Conteo General
-      if (estado === 'Abierto') stats.bugs.abiertos++;
-      if (estado === 'En Progreso') stats.bugs.enProgreso++;
-      if (estado === 'Reabierto') stats.bugs.reabiertos++;
-      if (estado === 'Resuelto') stats.bugs.resueltos++;
-      if (estado === 'Cerrado') stats.bugs.cerrados++;
-
-      // Inicializar contador para el proyecto si no existe
-      if (!statsPorProyecto[proyectoId]) {
-          statsPorProyecto[proyectoId] = { total: 0, Abierto: 0, 'En Progreso': 0, Resuelto: 0, Cerrado: 0, Reabierto: 0 };
-      }
-
-      // Conteo por Proyecto
-      statsPorProyecto[proyectoId].total++;
-      if (estado && statsPorProyecto[proyectoId].hasOwnProperty(estado)) {
-          statsPorProyecto[proyectoId][estado]++;
+    let criticalBugsCount = 0;
+    let unassignedBugsCount = 0;
+    bugsSnapshot.forEach(doc => {
+      const bugData = doc.data();
+      if (bugData.status !== 'Cerrado') {
+        if (bugData.prioridad === 'Crítica') criticalBugsCount++;
+        if (!bugData.assignedTo) unassignedBugsCount++;
       }
     });
 
-    // 4. Combinar los datos del proyecto con sus estadísticas de bugs
-    const projectsWithStats = userProjects.map(project => ({
-        ...project,
-        bugStats: statsPorProyecto[project.id] || { total: 0, Abierto: 0, 'En Progreso': 0, Resuelto: 0, Cerrado: 0, Reabierto: 0 },
-    }));
+    // --- Compilación de KPI: Salud de Proyectos ---
+    const projectBugCounts = {};
+    bugsSnapshot.forEach(doc => {
+      const bug = doc.data();
+      if (bug.status !== 'Cerrado') {
+        projectBugCounts[bug.projectId] = (projectBugCounts[bug.projectId] || 0) + 1;
+      }
+    });
+    const projectsHealth = [];
+    projectsSnapshot.forEach(doc => {
+      projectsHealth.push({
+        id: doc.id,
+        nombre: doc.data().nombre,
+        bugCount: projectBugCounts[doc.id] || 0,
+      });
+    });
+    projectsHealth.sort((a, b) => b.bugCount - a.bugCount);
 
-    return { stats, projectsWithStats, loading: false, error: null };
+    // --- Compilación de KPI: Carga del Equipo ---
+    const memberBugCounts = {};
+    bugsSnapshot.forEach(doc => {
+      const bug = doc.data();
+      if (bug.assignedTo && bug.status !== 'Cerrado') {
+        memberBugCounts[bug.assignedTo] = (memberBugCounts[bug.assignedTo] || 0) + 1;
+      }
+    });
+    const teamWorkload = [];
+    teamMembersSnapshot.forEach(doc => {
+      const member = doc.data();
+      teamWorkload.push({
+        userId: doc.id,
+        displayName: member.displayName || 'Usuario sin nombre',
+        photoURL: member.photoURL,
+        bugCount: memberBugCounts[doc.id] || 0,
+      });
+    });
+    teamWorkload.sort((a, b) => b.bugCount - a.bugCount);
 
-  } catch (error) {
-    console.error("Error obteniendo estadísticas del dashboard:", error);
+    // --- Compilación de Tareas del Usuario ---
+    const myTasks = [];
+    myTasksSnapshot.forEach(doc => myTasks.push({ id: doc.id, ...doc.data() }));
+    myTasks.sort((a, b) => (b.createdAt?.toDate() || 0) - (a.createdAt?.toDate() || 0));
+
     return {
-      stats: { bugs: {}, projects: [] },
-      projectsWithStats: [],
-      loading: false,
-      error: 'No se pudieron cargar los datos del dashboard. Verifica los permisos de Firestore.'
+      teamId,
+      stats: {
+        myTasksCount: myTasksSnapshot.size,
+        criticalBugsCount,
+        activeProjectsCount,
+        unassignedBugsCount,
+      },
+      myTasks,
+      projectsHealth,
+      teamWorkload,
     };
+  } catch (error) {
+    console.error("Error al obtener estadísticas del dashboard:", error);
+    return { error: error.message };
   }
 };
