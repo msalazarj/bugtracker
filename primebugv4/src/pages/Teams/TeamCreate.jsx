@@ -1,119 +1,180 @@
-// src/pages/Teams/TeamCreate.jsx
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { collection, doc, serverTimestamp, runTransaction } from 'firebase/firestore';
-import { db } from '../../firebase';
-import { useAuth } from '../../contexts/AuthContext.jsx';
-import { FaUsers, FaBug, FaTimes } from 'react-icons/fa';
+import { createTeam } from '../../services/teams';
+import { useAuth } from '../../contexts/AuthContext';
+
+// --- DESIGN SYSTEM ---
+import { UI } from '../../utils/design';
+import { FaArrowLeft, FaUsers, FaSpinner, FaExclamationTriangle, FaCheckCircle, FaCrown } from 'react-icons/fa';
 
 const TeamCreate = () => {
-    const [nombre, setNombre] = useState('');
-    const [error, setError] = useState('');
-    const [isSubmitting, setIsSubmitting] = useState(false);
-    const { user, refreshProfile } = useAuth();
     const navigate = useNavigate();
+    const { user, switchTeam } = useAuth(); // Necesitamos el usuario para la previsualización
+
+    const [formData, setFormData] = useState({
+        nombre: '',
+        descripcion: ''
+    });
+    
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [error, setError] = useState('');
+
+    const handleChange = (e) => {
+        setFormData({ ...formData, [e.target.name]: e.target.value });
+    };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if (!nombre.trim()) {
+        setError('');
+
+        if (!formData.nombre.trim()) {
             setError('El nombre del equipo es obligatorio.');
-            return;
-        }
-        if (!user) {
-            setError("Debes estar autenticado para crear un equipo.");
             return;
         }
 
         setIsSubmitting(true);
-        setError('');
 
         try {
-            await runTransaction(db, async (transaction) => {
-                const profileRef = doc(db, 'profiles', user.uid);
-                const profileSnap = await transaction.get(profileRef);
-
-                if (!profileSnap.exists()) {
-                    throw new Error("No se pudo encontrar tu perfil de usuario.");
-                }
-                if (profileSnap.data().teamId) {
-                    throw new Error("Ya perteneces a un equipo. No puedes crear uno nuevo.");
-                }
-
-                const newTeamRef = doc(collection(db, 'teams'));
-                
-                // Estructura de datos corregida según el modelo
-                const teamData = {
-                    nombre: nombre.trim(),
-                    ownerId: user.uid,
-                    createdAt: serverTimestamp(),
-                    members: {
-                        [user.uid]: { role: 'Administrador' }
-                    }
-                };
-
-                transaction.set(newTeamRef, teamData);
-                transaction.update(profileRef, { teamId: newTeamRef.id });
-            });
-
-            await refreshProfile();
-            navigate('/dashboard');
-
+            const result = await createTeam(formData);
+            
+            if (result.success) {
+                // Opcional: Cambiar automáticamente al nuevo equipo creado
+                // switchTeam(result.data.id); 
+                navigate('/equipos');
+            } else {
+                setError(result.error || 'No se pudo crear el equipo.');
+            }
         } catch (err) {
-            console.error("Error en transacción de creación de equipo:", err);
-            setError(err.message || 'No se pudo crear el equipo.');
+            console.error(err);
+            setError('Ocurrió un error inesperado.');
         } finally {
             setIsSubmitting(false);
         }
     };
 
     return (
-        <div className="split-page-layout">
-            <Link to="/dashboard" className="absolute top-6 right-8 text-slate-400 hover:text-red-500 transition-colors z-20">
-                <FaTimes size={24} />
-            </Link>
-
-            <div className="split-page-info-panel">
-                <div className="info-panel-logo-container">
-                    <div className="info-panel-logo-icon"><FaBug /></div>
-                    <span>PrimeBug</span>
-                </div>
-                <h1 className="info-panel-title">Crea tu Equipo de Trabajo</h1>
-                <p className="info-panel-description">
-                    Centraliza la colaboración, gestiona miembros y asigna roles para organizar tu flujo de trabajo de manera eficiente.
-                </p>
-            </div>
-
-            <div className="split-page-form-panel">
-                <div className="split-page-form-container">
-                    <form onSubmit={handleSubmit}>
-                        <div className="form-field">
-                            <label htmlFor="team-name" className="form-label">
-                                <FaUsers className="form-label-icon" />
-                                Nombre del Equipo
-                            </label>
-                            <input
-                                id="team-name"
-                                type="text"
-                                value={nombre}
-                                onChange={(e) => setNombre(e.target.value)}
-                                className="input-underlined"
-                                placeholder="Ej: Equipo de Innovación"
-                                required
-                            />
-                             <p className="form-hint">Este será el nombre de tu espacio de trabajo compartido.</p>
+        <div className="max-w-6xl mx-auto px-4 py-8">
+            
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                
+                {/* Panel Izquierdo: Info Visual */}
+                <div className="bg-slate-900 rounded-3xl p-8 text-white relative overflow-hidden flex flex-col justify-between min-h-[400px]">
+                    {/* Efecto de fondo */}
+                    <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-600 rounded-full blur-3xl opacity-20 -translate-y-1/2 translate-x-1/2"></div>
+                    
+                    <div className="relative z-10">
+                        <div className="w-14 h-14 bg-white/10 backdrop-blur-md rounded-2xl flex items-center justify-center text-3xl mb-6 border border-white/20 shadow-xl">
+                            <span role="img" aria-label="icon">🏢</span>
                         </div>
+                        <h1 className="text-3xl font-bold mb-4 text-white">Nuevo Equipo</h1>
+                        <p className="text-slate-300 leading-relaxed text-lg">
+                            Crea un espacio centralizado para colaborar. Agrega miembros, gestiona múltiples proyectos y mantén todo organizado.
+                        </p>
+                    </div>
+
+                    {/* Previsualización de la Tarjeta de Equipo */}
+                    <div className="relative z-10 bg-white/10 backdrop-blur-md p-6 rounded-2xl border border-white/10 mt-8">
+                        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Vista previa</h3>
                         
-                        {error && <p className="mt-6 text-sm text-red-600 bg-red-50 p-3 rounded-lg font-medium">{error}</p>}
-
-                        <div className="flex items-center justify-end gap-4 pt-6">
-                            <button type="button" onClick={() => navigate('/dashboard')} className="btn-secondary">
-                                Cancelar
-                            </button>
-                            <button type="submit" disabled={isSubmitting} className="btn-primary">
-                                {isSubmitting ? 'Creando Equipo...' : 'Crear Equipo'}
-                            </button>
+                        {/* Simulación de Tarjeta */}
+                        <div className="bg-white rounded-xl p-5 shadow-lg text-slate-800">
+                            <div className="flex justify-between items-start mb-2">
+                                {/* CORRECCIÓN 1: break-words en lugar de truncate para ver todo el nombre */}
+                                <h4 className="font-bold text-lg text-indigo-700 break-words pr-2">
+                                    {formData.nombre || 'Nombre del Equipo'}
+                                </h4>
+                                {user && (
+                                    /* CORRECCIÓN 2: Rol en Español y shrink-0 para que no se aplaste */
+                                    <span className="bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full flex items-center gap-1 text-[10px] font-bold border border-amber-200 shrink-0">
+                                        <FaCrown size={8} /> Propietario
+                                    </span>
+                                )}
+                            </div>
+                            <p className="text-sm text-slate-400 mb-4 line-clamp-2 min-h-[40px]">
+                                {formData.descripcion || 'Descripción corta de tu espacio de trabajo...'}
+                            </p>
+                            <div className="flex items-center gap-3 text-xs font-medium text-slate-500 bg-slate-50 p-2 rounded-lg">
+                                <FaUsers className="text-indigo-500"/>
+                                <span>1 Miembro (Tú)</span>
+                            </div>
                         </div>
-                    </form>
+                    </div>
+                </div>
+
+                {/* Panel Derecho: Formulario */}
+                <div className="lg:col-span-2 space-y-6">
+                    {/* Header Móvil / Navegación */}
+                    <div className="flex items-center justify-between">
+                        <Link to="/equipos" className="text-slate-500 hover:text-indigo-600 font-medium flex items-center gap-2 transition-colors">
+                            <FaArrowLeft className="text-xs"/> Cancelar y Volver
+                        </Link>
+                    </div>
+
+                    <div className={`${UI.CARD_BASE} p-8`}>
+                        {error && (
+                            <div className="bg-red-50 text-red-700 p-4 rounded-xl text-sm mb-6 border border-red-100 flex items-center gap-3 font-medium animate-shake">
+                                <FaExclamationTriangle />
+                                {error}
+                            </div>
+                        )}
+
+                        <form onSubmit={handleSubmit} className="space-y-8">
+                            
+                            {/* Nombre */}
+                            <div className="space-y-2">
+                                <label className="text-sm font-bold text-slate-700 flex items-center gap-2">
+                                    <FaUsers className="text-indigo-500"/> Nombre del Equipo
+                                </label>
+                                <input 
+                                    type="text" 
+                                    name="nombre"
+                                    className={UI.INPUT_TEXT} 
+                                    placeholder="Ej: Desarrollo Mobile, Marketing, Finanzas..."
+                                    value={formData.nombre}
+                                    onChange={handleChange}
+                                    autoFocus
+                                    required
+                                />
+                            </div>
+
+                            {/* Descripción */}
+                            <div className="space-y-2">
+                                <label className="text-sm font-bold text-slate-700 flex items-center gap-2">
+                                    <span className="text-indigo-500 text-lg">≡</span> Descripción <span className="text-slate-400 font-normal text-xs ml-1">(Opcional)</span>
+                                </label>
+                                <textarea 
+                                    name="descripcion"
+                                    className={`${UI.INPUT_TEXT} min-h-[120px] resize-none`} 
+                                    placeholder="¿Cuál es el propósito de este equipo?"
+                                    value={formData.descripcion}
+                                    onChange={handleChange}
+                                />
+                            </div>
+
+                            {/* Info Box */}
+                            <div className="bg-indigo-50 rounded-xl p-4 flex gap-3 text-indigo-800 text-sm">
+                                <FaCheckCircle className="text-indigo-500 mt-0.5 flex-shrink-0" />
+                                <p>
+                                    {/* CORRECCIÓN 2: Uso consistente de Propietario */}
+                                    Al crear un equipo, te convertirás automáticamente en el <strong>Propietario</strong>, lo que te permitirá invitar miembros y crear proyectos dentro de él.
+                                </p>
+                            </div>
+
+                            {/* Botones */}
+                            <div className="pt-6 border-t border-slate-100 flex items-center justify-end gap-4">
+                                <Link to="/equipos" className={UI.BTN_SECONDARY}>
+                                    Cancelar
+                                </Link>
+                                <button 
+                                    type="submit" 
+                                    disabled={isSubmitting} 
+                                    className={`${UI.BTN_PRIMARY} px-8 py-3`}
+                                >
+                                    {isSubmitting ? <><FaSpinner className="animate-spin" /> Creando...</> : 'Crear Equipo'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
                 </div>
             </div>
         </div>

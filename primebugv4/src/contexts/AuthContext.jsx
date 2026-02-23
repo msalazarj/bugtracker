@@ -1,105 +1,185 @@
-// src/contexts/AuthContext.jsx
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import {
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { 
+    createUserWithEmailAndPassword, 
+    signInWithEmailAndPassword, 
+    signOut, 
     onAuthStateChanged,
-    signInWithEmailAndPassword,
-    createUserWithEmailAndPassword,
-    signOut as firebaseSignOut,
-    sendPasswordResetEmail,
-    updatePassword as firebaseUpdatePassword
+    updateProfile
 } from 'firebase/auth';
+import { 
+    doc, 
+    getDoc, 
+    setDoc, 
+    query, 
+    collection, 
+    where, 
+    getDocs, 
+    documentId 
+} from 'firebase/firestore';
 import { auth, db } from '../firebase';
-import { doc, setDoc, getDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
 
 const AuthContext = createContext();
 
-export const useAuth = () => useContext(AuthContext);
+export const useAuth = () => {
+    return useContext(AuthContext);
+};
 
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
+    
+    // ESTADO MULTI-EQUIPO
+    const [userTeams, setUserTeams] = useState([]); // Lista de todos los equipos del usuario
+    const [currentTeam, setCurrentTeam] = useState(null); // El equipo activo actualmente
+    
     const [loading, setLoading] = useState(true);
-    const [profile, setProfile] = useState(null);
 
-    const refreshProfile = useCallback(async () => {
-        if (!user) return;
+    // Función principal para cargar el perfil y los equipos
+    const fetchUserProfile = async (uid) => {
         try {
-            const profileRef = doc(db, 'profiles', user.uid);
-            const docSnap = await getDoc(profileRef);
-            if (docSnap.exists()) { setProfile(docSnap.data()); }
+            // 1. Leer el documento del perfil del usuario
+            const docRef = doc(db, 'profiles', uid);
+            const docSnap = await getDoc(docRef);
+
+            if (docSnap.exists()) {
+                const profileData = docSnap.data();
+                
+                // 2. Verificar si tiene equipos asociados (array 'teamIds')
+                if (profileData.teamIds && profileData.teamIds.length > 0) {
+                    
+                    // 3. Traer la información de TODOS los equipos en una sola consulta
+                    const teamsQuery = query(
+                        collection(db, 'teams'),
+                        where(documentId(), 'in', profileData.teamIds)
+                    );
+
+                    const teamsSnap = await getDocs(teamsQuery);
+                    const teamsList = teamsSnap.docs.map(d => ({ 
+                        id: d.id, 
+                        ...d.data() 
+                    }));
+                    
+                    // Guardamos la lista completa en el estado
+                    setUserTeams(teamsList);
+
+                    // 4. Lógica para seleccionar el equipo activo (currentTeam)
+                    if (teamsList.length > 0) {
+                        setCurrentTeam(prev => {
+                            if (prev && teamsList.find(t => t.id === prev.id)) return prev;
+                            
+                            // Intenta buscar el lastActiveTeamId del perfil, si no, usa el primero
+                            if (profileData.lastActiveTeamId) {
+                                const lastActive = teamsList.find(t => t.id === profileData.lastActiveTeamId);
+                                if (lastActive) return lastActive;
+                            }
+                            
+                            return teamsList[0];
+                        });
+                    }
+                } else {
+                    // El usuario no tiene equipos
+                    setUserTeams([]);
+                    setCurrentTeam(null);
+                }
+            } else {
+                console.warn("No se encontró perfil para el usuario:", uid);
+            }
         } catch (error) {
-            console.error("AuthContext: Error en recarga manual del perfil:", error);
+            console.error("Error cargando perfil/equipos:", error);
         }
-    }, [user]);
+    };
 
     useEffect(() => {
-        let profileUnsubscribe = null;
-
-        const authUnsubscribe = onAuthStateChanged(auth, (currentUser) => {
-            if (profileUnsubscribe) { profileUnsubscribe(); }
-
+        const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+            setLoading(true);
             if (currentUser) {
-                const profileRef = doc(db, 'profiles', currentUser.uid);
-                // Se establece un listener en tiempo real para el perfil.
-                profileUnsubscribe = onSnapshot(profileRef, (snap) => {
-                    // Se actualizan los estados de forma atómica al recibir el perfil.
-                    if (snap.exists()) {
-                        setProfile(snap.data());
-                    } else {
-                        console.warn("AuthContext: Perfil de usuario no encontrado.");
-                        setProfile(null);
-                    }
-                    setUser(currentUser);
-                    setLoading(false);
-                }, (error) => {
-                    console.error("AuthContext: Error en el listener del perfil:", error);
-                    setUser(currentUser);
-                    setProfile(null);
-                    setLoading(false);
-                });
+                setUser(currentUser);
+                await fetchUserProfile(currentUser.uid);
             } else {
-                // Si no hay usuario, se limpia todo.
+                // Limpiar estado al cerrar sesión
                 setUser(null);
-                setProfile(null);
-                setLoading(false);
+                setUserTeams([]);
+                setCurrentTeam(null);
             }
+            setLoading(false);
         });
 
-        return () => {
-            authUnsubscribe();
-            if (profileUnsubscribe) { profileUnsubscribe(); }
-        };
+        return unsubscribe;
     }, []);
 
-    const signIn = (email, password) => signInWithEmailAndPassword(auth, email, password);
-    const signOut = () => firebaseSignOut(auth);
-    const resetPassword = (email) => sendPasswordResetEmail(auth, email);
-    const updatePassword = (newPassword) => firebaseUpdatePassword(auth.currentUser, newPassword);
-    
-    const signUp = async (email, password, fullName) => {
+    // --- Funciones de Autenticación ---
+
+    const signup = async (email, password, fullName) => {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        const { user } = userCredential;
+        const user = userCredential.user;
+        
+        await updateProfile(user, { displayName: fullName });
+
+        // Crear perfil base en Firestore con array vacío de equipos
         await setDoc(doc(db, 'profiles', user.uid), {
             uid: user.uid,
-            email: user.email,
+            email: email,
             nombre_completo: fullName,
             role: 'User',
-            teamId: null,
-            createdAt: serverTimestamp(),
+            teamIds: [], // Inicializamos como array vacío
+            createdAt: new Date().toISOString()
         });
-        return userCredential;
+
+        return user;
+    };
+
+    const login = (email, password) => {
+        return signInWithEmailAndPassword(auth, email, password);
+    };
+
+    const logout = () => {
+        return signOut(auth);
+    };
+
+    // Helper para recargar datos manualmente (ej: después de crear un equipo)
+    const refreshProfile = async () => {
+        if (user) await fetchUserProfile(user.uid);
+    };
+
+    // --- Función para cambiar de equipo activo ---
+    const switchTeam = (teamId) => {
+        const selected = userTeams.find(t => t.id === teamId);
+        if (selected) {
+            setCurrentTeam(selected);
+        }
+    };
+
+    // --- NUEVO: Función para actualizar la información de un equipo en la memoria (hot-update) ---
+    const updateTeamInState = (teamId, newName, newDescription) => {
+        // 1. Actualizar la lista de equipos
+        setUserTeams(prevTeams => 
+            prevTeams.map(t => 
+                t.id === teamId 
+                ? { ...t, nombre: newName, descripcion: newDescription } 
+                : t
+            )
+        );
+
+        // 2. Si el equipo editado es el que está activo actualmente, actualizar 'currentTeam'
+        setCurrentTeam(prevCurrent => {
+            if (prevCurrent && prevCurrent.id === teamId) {
+                return { ...prevCurrent, nombre: newName, descripcion: newDescription };
+            }
+            return prevCurrent;
+        });
     };
 
     const value = {
         user,
-        profile,
-        loading,
-        hasTeam: !!profile?.teamId,
+        currentTeam,    // El equipo activo actualmente
+        userTeams,      // La lista de todos los equipos del usuario
+        hasTeam: !!currentTeam,
+        signup,
+        login,
+        logout,
         refreshProfile,
-        signIn,
-        signUp,
-        signOut,
-        resetPassword,
-        updatePassword,
+        switchTeam,     // Función para cambiar de equipo
+        updateTeamInState, // <--- EXPORTADA LA NUEVA FUNCIÓN
+        loading
     };
 
     return (

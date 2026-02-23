@@ -1,125 +1,156 @@
-import React from 'react';
-import { NavLink, Link, useNavigate, useMatch } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext.jsx';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../firebase';
 import { 
-    FaTachometerAlt, FaUsers, FaProjectDiagram, FaBug, 
-    FaSignOutAlt, FaFolder, FaUserFriends, FaFileAlt,
-    FaPlusCircle // Icono para la acción de crear
+    FaChartPie, FaUsers, FaFolderOpen, FaBug, 
+    FaChevronDown, FaArrowLeft, FaFileAlt, FaSignOutAlt,
+    FaChartLine, FaTimes 
 } from 'react-icons/fa';
 
-const NavItem = ({ to, icon, children, isSidebarOpen, end = true }) => {
-    const baseClasses = "flex items-center gap-x-4 px-6 py-3 text-base font-medium text-slate-300 rounded-lg hover:bg-slate-800 transition-colors";
-    const activeClasses = "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20";
-    const collapsedIconOnly = "w-full justify-center px-0";
-
-    return (
-        <NavLink 
-            to={to} 
-            end={end} 
-            className={({ isActive }) => `${baseClasses} ${isActive ? activeClasses : ''} ${!isSidebarOpen ? collapsedIconOnly : ''}`}
-        >
-            <span className="text-lg flex-shrink-0">{icon}</span>
-            {isSidebarOpen && <span className="truncate">{children}</span>}
-        </NavLink>
-    );
-};
-
-const SidebarSeparator = ({ isSidebarOpen }) => (
-    isSidebarOpen ? <hr className="border-t border-slate-700 mx-6 my-4" /> : <div className="my-4" />
-);
-
-const Sidebar = ({ isSidebarOpen }) => {
-    const { user, profile, signOut, hasTeam } = useAuth();
+const Sidebar = ({ isOpen, setIsOpen }) => {
+    const { logout, user, currentTeam, userTeams, switchTeam } = useAuth();
+    const location = useLocation();
     const navigate = useNavigate();
-    
-    const projectMatch = useMatch('/proyectos/:projectId/*');
-    const projectId = projectMatch?.params.projectId;
+    const [projectName, setProjectName] = useState('');
+
+    const pathSegments = location.pathname.split('/');
+    const projectsIndex = pathSegments.indexOf('proyectos');
+    const projectId = (projectsIndex !== -1 && pathSegments.length > projectsIndex + 1 && pathSegments[projectsIndex + 1] !== 'crear') 
+        ? pathSegments[projectsIndex + 1] : null;
+
+    useEffect(() => {
+        const fetchProjectName = async () => {
+            if (projectId) {
+                const cachedName = sessionStorage.getItem(`sidebar_pname_${projectId}`);
+                if (cachedName) { setProjectName(cachedName); return; }
+                try {
+                    const docRef = doc(db, 'projects', projectId);
+                    const docSnap = await getDoc(docRef);
+                    if (docSnap.exists()) {
+                        const name = docSnap.data().nombre;
+                        setProjectName(name);
+                        sessionStorage.setItem(`sidebar_pname_${projectId}`, name);
+                    }
+                } catch (error) {}
+            }
+        };
+        fetchProjectName();
+    }, [projectId]);
 
     const handleSignOut = async () => {
-        try {
-            await signOut();
-            navigate('/login');
-        } catch (error) {
-            console.error("Error al cerrar sesión:", error);
-        }
+        try { await logout(); navigate('/login'); } catch (error) {}
     };
 
-    // --- LÓGICA DE INICIALES MEJORADA ---
-    const getInitials = () => {
-        if (profile?.nombre_completo) return profile.nombre_completo.charAt(0).toUpperCase();
-        if (user?.email) return user.email.charAt(0).toUpperCase();
-        return 'U';
+    const isActive = (path, exact = false) => {
+        if (exact) return location.pathname === path;
+        return location.pathname === path || location.pathname.startsWith(path + '/');
     };
+
+    const globalMenu = [
+        { path: '/dashboard', label: 'Dashboard', icon: <FaChartPie /> },
+        { path: '/equipos', label: 'Mis Equipos', icon: <FaUsers /> },
+        { path: '/proyectos', label: 'Proyectos', icon: <FaFolderOpen /> },
+        { path: '/reportes', label: 'Reportes', icon: <FaChartLine /> },
+    ];
+
+    const projectMenu = [
+        { path: `/proyectos/${projectId}`, label: 'Resumen', icon: <FaChartPie />, exact: true },
+        { path: `/proyectos/${projectId}/bugs`, label: 'Tablero de Bugs', icon: <FaBug /> },
+        { path: `/proyectos/${projectId}/miembros`, label: 'Equipo', icon: <FaUsers /> },
+        { path: `/proyectos/${projectId}/documentacion`, label: 'Documentación', icon: <FaFileAlt /> },
+    ];
 
     return (
-        <aside className={`fixed top-0 left-0 h-full bg-slate-900 text-white transition-all duration-300 z-30 shadow-2xl ${isSidebarOpen ? 'w-64' : 'w-20'}`}>
-            <div className="flex flex-col h-full">
-                {/* LOGO */}
-                <div className={`flex items-center h-20 border-b border-slate-700/50 ${isSidebarOpen ? 'px-6' : 'px-0 justify-center'}`}>
-                    <Link to="/dashboard" className="flex items-center gap-3 group">
-                        <div className="bg-indigo-600 p-2 rounded-lg group-hover:bg-indigo-500 transition-colors">
-                            <FaBug className="text-white text-xl flex-shrink-0" />
+        <>
+            {/* OVERLAY (Fondo oscuro para móviles) */}
+            {isOpen && (
+                <div 
+                    className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[50] lg:hidden animate-fade-in"
+                    onClick={() => setIsOpen(false)}
+                />
+            )}
+
+            <aside className={`
+                fixed left-0 top-0 h-screen w-64 bg-slate-900 text-slate-300 flex flex-col 
+                border-r border-slate-800 shadow-xl z-[55] transition-transform duration-300 ease-in-out
+                ${isOpen ? 'translate-x-0' : '-translate-x-full'} 
+                lg:translate-x-0
+            `}>
+                {/* HEADER */}
+                <div className="p-5 border-b border-slate-800 bg-slate-900">
+                    <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white text-lg shadow-lg">
+                                <FaBug />
+                            </div>
+                            <h1 className="text-white font-bold text-lg tracking-tight">PrimeBug</h1>
                         </div>
-                        {isSidebarOpen && <span className="text-xl font-black tracking-tight text-white uppercase">PrimeBug</span>}
-                    </Link>
+                        {/* Botón de cerrar solo en móviles */}
+                        <button onClick={() => setIsOpen(false)} className="lg:hidden text-slate-500 hover:text-white p-1">
+                            <FaTimes size={18} />
+                        </button>
+                    </div>
+
+                    <div className="relative">
+                        <select 
+                            value={currentTeam?.id || ''} 
+                            onChange={(e) => switchTeam(e.target.value)}
+                            className="w-full bg-slate-800 text-white text-sm font-medium py-2 px-3 rounded-lg border border-slate-700 appearance-none cursor-pointer"
+                        >
+                            {userTeams.length > 0 ? (
+                                userTeams.map(t => <option key={t.id} value={t.id}>{t.nombre}</option>)
+                            ) : ( <option>Sin Equipo</option> )}
+                        </select>
+                        <FaChevronDown className="absolute right-3 top-3 text-xs text-slate-400 pointer-events-none"/>
+                    </div>
                 </div>
 
-                {/* NAVEGACIÓN PRINCIPAL */}
-                <nav className="flex-1 px-3 py-6 space-y-1 overflow-y-auto custom-scrollbar">
-                    <NavItem to="/dashboard" icon={<FaTachometerAlt />} isSidebarOpen={isSidebarOpen}>Dashboard</NavItem>
-                    
-                    <SidebarSeparator isSidebarOpen={isSidebarOpen} />
-                    
-                    {hasTeam ? (
-                        <>
-                            <NavItem to="/equipos" icon={<FaUsers />} isSidebarOpen={isSidebarOpen}>Mi Equipo</NavItem>
-                            <NavItem to="/miembros" icon={<FaUserFriends />} isSidebarOpen={isSidebarOpen}>Miembros</NavItem>
-                            <NavItem to="/proyectos" icon={<FaProjectDiagram />} isSidebarOpen={isSidebarOpen} end={false}>Proyectos</NavItem>
-                        </>
+                {/* NAV */}
+                <nav className="flex-1 overflow-y-auto custom-scrollbar flex flex-col">
+                    {projectId ? (
+                        <div className="flex-1 bg-slate-800/30">
+                            <div className="bg-gradient-to-b from-slate-800 to-slate-900/50 border-b border-slate-700/50 p-4 border-l-4 border-l-indigo-500">
+                                <Link to="/proyectos" onClick={() => setIsOpen(false)} className="text-[10px] text-indigo-400 hover:text-white uppercase tracking-widest font-bold flex items-center gap-1 mb-2">
+                                    <FaArrowLeft /> Volver al listado
+                                </Link>
+                                <h2 className="text-white font-bold leading-tight text-lg truncate">{projectName || 'Proyecto'}</h2>
+                            </div>
+                            <div className="p-3 space-y-1">
+                                {projectMenu.map((item) => (
+                                    <Link key={item.path} to={item.path} onClick={() => setIsOpen(false)} className={`flex items-center gap-3 px-3 py-3 rounded-lg text-sm ${isActive(item.path, item.exact) ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
+                                        {item.icon} <span>{item.label}</span>
+                                    </Link>
+                                ))}
+                            </div>
+                        </div>
                     ) : (
-                        <NavItem to="/equipos/crear" icon={<FaPlusCircle />} isSidebarOpen={isSidebarOpen}>Crear Equipo</NavItem>
-                    )}
-
-                    {/* MENÚ CONTEXTUAL DE PROYECTO */}
-                    {projectId && hasTeam && (
-                        <div className="animate-fade-in">
-                            <SidebarSeparator isSidebarOpen={isSidebarOpen} />
-                            {isSidebarOpen && (
-                                <div className="px-6 mb-2">
-                                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Proyecto Activo</span>
-                                </div>
-                            )}
-                            <NavItem to={`/proyectos/${projectId}/detalles`} icon={<FaFolder />} isSidebarOpen={isSidebarOpen}>Detalles</NavItem>
-                            <NavItem to={`/proyectos/${projectId}/miembros`} icon={<FaUsers />} isSidebarOpen={isSidebarOpen}>Miembros</NavItem>
-                            <NavItem to={`/proyectos/${projectId}/bugs`} icon={<FaBug />} isSidebarOpen={isSidebarOpen} end={false}>Bugs</NavItem>
-                            <NavItem to={`/proyectos/${projectId}/documentacion`} icon={<FaFileAlt />} isSidebarOpen={isSidebarOpen}>Documentación</NavItem>
+                        <div className="space-y-1 p-3">
+                            <p className="px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-slate-600">Menú Principal</p>
+                            {globalMenu.map((item) => (
+                                <Link key={item.path} to={item.path} onClick={() => setIsOpen(false)} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm ${isActive(item.path) ? 'bg-indigo-600 text-white shadow-md' : 'hover:bg-slate-800 hover:text-white'}`}>
+                                    {item.icon} <span>{item.label}</span>
+                                </Link>
+                            ))}
                         </div>
                     )}
                 </nav>
 
-                {/* SECCIÓN DE USUARIO - CORREGIDA Y MEJORADA */}
-                <div className="px-3 py-4 border-t border-slate-700/50 bg-slate-900/50">
-                     <div className={`flex items-center ${isSidebarOpen ? 'gap-x-3 px-3' : 'justify-center'}`}>
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center font-black text-white shadow-lg border border-white/10 flex-shrink-0">
-                            {getInitials()}
-                        </div>
-                        {isSidebarOpen && (
-                            <div className="flex-1 min-w-0">
-                                <p className="text-sm font-bold text-white truncate leading-tight">{profile?.nombre_completo || user?.email}</p>
-                                <p className="text-[10px] font-medium text-slate-400 truncate">{profile?.role || 'Usuario'}</p>
+                {/* FOOTER */}
+                <div className="p-4 border-t border-slate-800 bg-slate-900">
+                    <div className="flex items-center justify-between">
+                        <Link to="/perfil" onClick={() => setIsOpen(false)} className="flex items-center gap-3 flex-1 hover:bg-slate-800 p-2 rounded-lg -ml-2">
+                            <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-xs font-bold text-white border-2 border-slate-600 uppercase">
+                                {user?.displayName?.charAt(0) || user?.email?.charAt(0) || 'U'}
                             </div>
-                        )}
-                         <button 
-                            onClick={handleSignOut} 
-                            title="Cerrar sesión" 
-                            className="p-2 text-slate-400 hover:text-white hover:bg-red-500/20 hover:text-red-400 rounded-lg transition-all"
-                        >
-                            <FaSignOutAlt className="text-lg" />
-                        </button>
+                            <p className="text-sm font-bold text-white truncate w-24">{user?.displayName || 'Usuario'}</p>
+                        </Link>
+                        <button onClick={handleSignOut} className="p-2 text-slate-400 hover:text-red-400"><FaSignOutAlt /></button>
                     </div>
                 </div>
-            </div>
-        </aside>
+            </aside>
+        </>
     );
 };
 

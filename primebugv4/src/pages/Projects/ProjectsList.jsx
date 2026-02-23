@@ -1,195 +1,303 @@
-// src/pages/Projects/ProjectsList.jsx
-import React, { useState, useEffect, useCallback } from 'react';
-import { collection, query, where, getDocs, doc, getDoc, documentId } from 'firebase/firestore';
-import { db } from '../../firebase';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { getProjectsByTeam } from '../../services/projects'; 
 import { useAuth } from '../../contexts/AuthContext.jsx';
-import { Link } from 'react-router-dom';
-import { FaPlus, FaFolder, FaUserFriends, FaBug, FaUsers } from 'react-icons/fa';
-import DOMPurify from 'dompurify';
-import Tippy from '@tippyjs/react';
-import 'tippy.js/dist/tippy.css';
 
-const CardSkeleton = () => (
-    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col animate-pulse">
-        <div className="p-5 border-b border-slate-100"><div className="h-6 bg-slate-200 rounded w-3/4"></div></div>
-        <div className="p-5 flex-grow">
-            <div className="h-4 bg-slate-200 rounded w-full mb-2"></div>
-            <div className="h-4 bg-slate-200 rounded w-5/6"></div>
-        </div>
-        <div className="px-5 py-4 bg-slate-50/50 border-t border-slate-100 space-y-4">
-            <div className="flex justify-between"><div className="h-4 bg-slate-200 rounded w-20"></div><div className="h-4 bg-slate-200 rounded w-10"></div></div>
-            <div className="flex gap-2"><div className="h-5 bg-slate-200 rounded-full w-10"></div><div className="h-5 bg-slate-200 rounded-full w-10"></div></div>
-            <div className="pt-4 border-t border-slate-200 flex justify-between items-center">
-                <div className="h-5 bg-slate-200 rounded w-24"></div>
-                <div className="flex items-center"><div className="w-8 h-8 bg-slate-200 rounded-full"></div></div>
-            </div>
-        </div>
-    </div>
-);
+// --- IMPORT DESIGN SYSTEM ---
+import { UI, formatDate } from '../../utils/design';
 
-const ProjectCard = ({ project }) => {
-    const memberCount = Object.keys(project.members || {}).length;
-    const bugStats = project.bugStats || { total: 0, Abierto: 0, 'En Progreso': 0, Resuelto: 0, Cerrado: 0, Reabierto: 0 };
-    const cleanDescriptionHTML = DOMPurify.sanitize(project.descripcion);
-
-    const BugStatusPill = ({ count, colorClass, title }) => {
-        if (count === 0) return null;
-        return (
-            <Tippy content={title} placement="top">
-                <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full ${colorClass}`}>
-                    <span className="font-bold text-xs">{count}</span>
-                </div>
-            </Tippy>
-        );
-    };
-
-    return (
-        <Link 
-            to={`/proyectos/${project.id}`} 
-            className="bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col hover:shadow-lg hover:-translate-y-1 transition-all duration-300 group"
-        >
-            <div className="p-5 border-b border-slate-100 flex items-center gap-4">
-                <div className="w-10 h-10 flex-shrink-0 bg-indigo-100 text-indigo-600 rounded-lg flex items-center justify-center"><FaFolder /></div>
-                <h3 className="font-bold text-lg text-slate-800 truncate group-hover:text-indigo-600 transition-colors">{project.nombre}</h3>
-            </div>
-
-            <div 
-                className="p-5 flex-grow text-sm text-slate-500 h-20 overflow-hidden relative"
-                dangerouslySetInnerHTML={{ __html: cleanDescriptionHTML || '<p>Sin descripción.</p>' }}
-            />
-
-            <div className="px-5 py-4 bg-slate-50/70 border-t border-slate-100 space-y-3 mt-auto">
-                <div className="flex items-center justify-between">
-                     <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Estado de Bugs</span>
-                     <div className="flex items-center gap-1.5" title={`${bugStats.total} bugs en total`}>
-                        <FaBug className="text-slate-400" />
-                        <span className="font-bold text-sm text-slate-600">{bugStats.total}</span>
-                    </div>
-                </div>
-                <div className="flex items-center gap-2 flex-wrap">
-                    <BugStatusPill count={bugStats.Abierto} colorClass="bg-blue-100 text-blue-700" title="Abiertos" />
-                    <BugStatusPill count={bugStats['En Progreso']} colorClass="bg-amber-100 text-amber-700" title="En Progreso" />
-                    <BugStatusPill count={bugStats.Resuelto} colorClass="bg-green-100 text-green-700" title="Resueltos" />
-                    <BugStatusPill count={bugStats.Cerrado} colorClass="bg-slate-200 text-slate-600" title="Cerrados" />
-                    <BugStatusPill count={bugStats.Reabierto} colorClass="bg-red-100 text-red-700" title="Reabiertos" />
-                </div>
-                
-                <div className="pt-3 border-t border-slate-200 flex justify-between items-center">
-                    <div className="flex items-center gap-2" title={`Equipo: ${project.team_name || 'No asignado'}`}>
-                        <FaUsers className="text-slate-400" />
-                        <span className="text-xs font-semibold text-slate-600 truncate max-w-[120px]">{project.team_name || 'N/A'}</span>
-                    </div>
-                    <div className="flex items-center" title={`${memberCount} miembros`}>
-                        {/* Aquí necesitarías un mapeo de IDs a detalles de miembros si quisieras mostrar avatares */}
-                        <FaUserFriends />
-                        <span className="ml-2 text-sm">{memberCount}</span>
-                    </div>
-                </div>
-            </div>
-        </Link>
-    );
-};
+// Iconos
+import { 
+    FaPlus, FaSearch, FaFolderOpen, FaSpinner, 
+    FaCube, FaClock, FaUsers, FaExclamationTriangle,
+    FaChevronDown, FaChevronUp, FaArchive 
+} from 'react-icons/fa';
 
 const ProjectsList = () => {
-  const [projects, setProjects] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const { user, profile } = useAuth(); // Usamos el perfil desde el AuthContext
+    const { currentTeam, user, loading: authLoading } = useAuth(); 
+    const navigate = useNavigate();
+    
+    const [projects, setProjects] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [showArchived, setShowArchived] = useState(false);
 
-  // Se usa useCallback para evitar re-crear la función en cada render
-  const fetchProjects = useCallback(async () => {
-    if (!user || !profile?.teamId) {
-        setLoading(false);
-        return;
-    }
+    useEffect(() => {
+        if (authLoading) return;
+        if (!currentTeam || !user) { 
+            setLoading(false);
+            return;
+        }
 
-    setLoading(true);
-    try {
-      // 1. Obtener documento del equipo para los IDs de proyectos
-      const teamRef = doc(db, 'teams', profile.teamId);
-      const teamSnap = await getDoc(teamRef);
+        const fetchProjects = async () => {
+            setLoading(true);
+            setError(null);
+            
+            const res = await getProjectsByTeam(currentTeam.id, user.uid);
+            
+            if (res.success) {
+                setProjects(res.data);
+            } else {
+                setError("No se pudieron cargar los proyectos.");
+            }
+            
+            setLoading(false);
+        };
 
-      if (!teamSnap.exists() || !teamSnap.data().projectIds || teamSnap.data().projectIds.length === 0) {
-        setProjects([]);
-        setLoading(false);
-        return;
-      }
-      const projectIds = teamSnap.data().projectIds;
+        fetchProjects();
+    }, [currentTeam, user, authLoading]);
 
-      // 2. Obtener los documentos de los proyectos
-      const projectsQuery = query(collection(db, 'projects'), where(documentId(), 'in', projectIds));
-      const projectsSnapshot = await getDocs(projectsQuery);
-      const projectsData = projectsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    // OPTIMIZACIÓN 1: Memorizamos los filtros para que el buscador sea ultrarrápido
+    const filteredProjects = useMemo(() => {
+        const lowerSearch = searchTerm.toLowerCase();
+        return projects.filter(p => 
+            p.nombre.toLowerCase().includes(lowerSearch) ||
+            (p.descripcion || '').toLowerCase().includes(lowerSearch) ||
+            (p.sigla_bug || '').toLowerCase().includes(lowerSearch)
+        );
+    }, [projects, searchTerm]);
 
-      // 3. Obtener las estadísticas de bugs (igual que antes)
-      const bugsQuery = query(collection(db, "bugs"), where("proyecto_id", "in", projectIds));
-      const bugsSnapshot = await getDocs(bugsQuery);
-      const statsByProject = {};
-      bugsSnapshot.forEach(bugDoc => {
-          const bug = bugDoc.data();
-          if (!bug.proyecto_id) return;
-          
-          if (!statsByProject[bug.proyecto_id]) {
-              statsByProject[bug.proyecto_id] = { total: 0, Abierto: 0, 'En Progreso': 0, Resuelto: 0, Cerrado: 0, Reabierto: 0 };
-          }
-          statsByProject[bug.proyecto_id].total++;
-          if (bug.estado && statsByProject[bug.proyecto_id].hasOwnProperty(bug.estado)) {
-              statsByProject[bug.proyecto_id][bug.estado]++;
-          }
-      });
+    const activeProjects = useMemo(() => 
+        filteredProjects.filter(p => !p.status || p.status === 'Activo'), 
+    [filteredProjects]);
 
-      // 4. Combinar proyectos y estadísticas
-      const projectsWithStats = projectsData.map(project => ({
-          ...project,
-          bugStats: statsByProject[project.id] || { total: 0, Abierto: 0, 'En Progreso': 0, Resuelto: 0, Cerrado: 0, Reabierto: 0 }
-      }));
+    const archivedProjects = useMemo(() => 
+        filteredProjects.filter(p => p.status === 'Stand By' || p.status === 'Cerrado'), 
+    [filteredProjects]);
 
-      setProjects(projectsWithStats);
+    // Helper de estilos
+    const getProjectStatusStyle = (status) => {
+        switch(status) {
+            case 'Activo': return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+            case 'Stand By': return 'bg-amber-100 text-amber-700 border-amber-200';
+            case 'Cerrado': return 'bg-slate-100 text-slate-500 border-slate-200';
+            default: return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+        }
+    };
 
-    } catch (error) {
-      console.error("Error al cargar la lista de proyectos:", error);
-    } finally {
-      setLoading(false);
-    }
-  }, [user, profile]);
+    // --- RENDERIZADOR DE TARJETA ---
+    const renderProjectCard = (project) => (
+        <div 
+            key={project.id} 
+            onClick={() => navigate(`/proyectos/${project.id}`)}
+            className={`${UI.CARD_BASE} p-6 hover:shadow-md hover:border-indigo-200 transition-all cursor-pointer group flex flex-col h-full relative overflow-hidden bg-white`}
+        >
+            <div className="flex justify-between items-start mb-4">
+                <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-xl shadow-sm border transition-transform duration-300 group-hover:scale-110 ${
+                    project.status === 'Cerrado' 
+                    ? 'bg-slate-100 text-slate-400 border-slate-200' 
+                    : 'bg-indigo-50 text-indigo-600 border-indigo-100'
+                }`}>
+                    <FaCube />
+                </div>
+                <span className={`px-2.5 py-1 rounded-md text-[10px] uppercase font-bold border tracking-wide ${getProjectStatusStyle(project.status || 'Activo')}`}>
+                    {project.status || 'Activo'}
+                </span>
+            </div>
 
-  useEffect(() => {
-    fetchProjects();
-  }, [fetchProjects]);
+            <div className="mb-6 flex-1">
+                <h3 className={`text-lg font-bold mb-1 transition-colors line-clamp-1 ${
+                    project.status === 'Cerrado' ? 'text-slate-500' : 'text-slate-800 group-hover:text-indigo-600'
+                }`} title={project.nombre}>
+                    {project.nombre}
+                </h3>
+                <p className="text-sm text-slate-500 line-clamp-2" title={project.descripcion}>
+                    {project.descripcion || 'Sin descripción disponible.'}
+                </p>
+            </div>
 
-  return (
-    <div className="space-y-8">
-        <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
-            <h1 className="text-3xl font-bold text-slate-800">Proyectos</h1>
-            <div className="flex items-center gap-3">
-                 <Link to="/bugs/crear" className="btn-secondary flex items-center justify-center gap-x-2 px-4 py-2 text-sm font-medium whitespace-nowrap">
-                    <FaBug /> Nuevo Bug
-                </Link>
-                <Link to="/proyectos/crear" className="btn-primary flex items-center justify-center gap-x-2 px-4 py-2 text-sm font-medium whitespace-nowrap">
-                    <FaPlus /> Crear Proyecto
-                </Link>
+            <div className="pt-4 border-t border-slate-50 flex items-center justify-between text-xs text-slate-400">
+                <div className="flex items-center gap-1 font-mono bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100 text-slate-500 font-bold" title="Sigla del Proyecto">
+                    {project.sigla_bug || 'PRJ'}
+                </div>
+                
+                <div className="flex items-center gap-4">
+                    {project.members && (
+                        <div className="flex items-center gap-1 font-medium" title={`${project.members.length} miembros`}>
+                            <FaUsers className="text-slate-300"/> {project.members.length}
+                        </div>
+                    )}
+                    <div className="flex items-center gap-1 font-medium" title={`Creado el ${formatDate(project.createdAt)}`}>
+                        <FaClock className="text-slate-300"/> {formatDate(project.createdAt)}
+                    </div>
+                </div>
             </div>
         </div>
+    );
 
-        {loading ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {[...Array(3)].map((_, i) => <CardSkeleton key={i} />)}
+    // =========================================================================
+    // SKELETON LOADER
+    // =========================================================================
+    if (authLoading || (loading && !error)) {
+        return (
+            <div className={UI.PAGE_CONTAINER}>
+                {/* Header (Mantenemos el real para evitar parpadeos) */}
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <div>
+                        <h1 className={UI.HEADER_TITLE}>Proyectos</h1>
+                        <p className={UI.HEADER_SUBTITLE}>
+                            Gestiona tus iniciativas en <strong className="text-indigo-600">{currentTeam?.nombre || 'tu equipo'}</strong>.
+                        </p>
+                    </div>
+                    <Link to="/proyectos/crear" className={UI.BTN_PRIMARY}>
+                        <FaPlus /> Nuevo Proyecto
+                    </Link>
+                </div>
+
+                {/* Barra de Búsqueda (Mantenemos la real para evitar parpadeos) */}
+                <div className="relative max-w-md mt-6 mb-8 group">
+                    <FaSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 transition-colors" />
+                    <input 
+                        type="text" 
+                        placeholder="Buscar por nombre, descripción o sigla..." 
+                        className={`${UI.INPUT_TEXT} pl-11 shadow-sm opacity-50 cursor-wait`}
+                        disabled
+                    />
+                </div>
+
+                {/* Grid de Esqueletos simulando las tarjetas de proyectos */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-pulse">
+                    {[1, 2, 3, 4, 5, 6].map(i => (
+                        <div key={i} className={`${UI.CARD_BASE} p-6 flex flex-col h-full bg-white border border-slate-100`}>
+                            <div className="flex justify-between items-start mb-4">
+                                <div className="w-12 h-12 rounded-xl bg-slate-100 flex-shrink-0"></div>
+                                <div className="h-6 w-16 bg-slate-100 rounded-md"></div>
+                            </div>
+                            
+                            <div className="mb-6 flex-1 space-y-3 mt-2">
+                                <div className="h-5 w-3/4 bg-slate-200 rounded"></div>
+                                <div className="space-y-1">
+                                    <div className="h-3 w-full bg-slate-100 rounded"></div>
+                                    <div className="h-3 w-5/6 bg-slate-100 rounded"></div>
+                                </div>
+                            </div>
+
+                            <div className="pt-4 border-t border-slate-50 flex items-center justify-between">
+                                <div className="h-6 w-12 bg-slate-100 rounded"></div>
+                                <div className="flex gap-4">
+                                    <div className="h-4 w-8 bg-slate-100 rounded"></div>
+                                    <div className="h-4 w-16 bg-slate-100 rounded"></div>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
             </div>
-        ) : projects.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {projects.map(project => <ProjectCard key={project.id} project={project} />)}
+        );
+    }
+
+    if (error) return (
+        <div className={UI.PAGE_CONTAINER}>
+            <div className="p-10 text-center text-red-500 bg-red-50 rounded-xl border border-red-100 m-4">
+                <FaExclamationTriangle className="text-4xl mx-auto mb-2"/>
+                <p className="font-bold">Error</p>
+                <p className="text-sm">{error}</p>
             </div>
-        ) : (
-            <div className="text-center bg-white p-12 rounded-2xl shadow-sm border border-slate-100 mt-10">
-                <div className="w-20 h-20 bg-indigo-50 text-indigo-500 mx-auto rounded-full flex items-center justify-center mb-6"><FaFolder size={32} /></div>
-                <h3 className="text-xl font-bold text-slate-800">Crea tu primer proyecto</h3>
-                <p className="text-slate-500 mt-2 max-w-md mx-auto">Los proyectos te ayudan a organizar tus bugs y a colaborar con tu equipo. ¡Empieza ahora!</p>
-                 <Link to="/proyectos/crear" className="btn-primary mt-8 inline-flex items-center justify-center gap-x-2 px-5 py-2.5 font-semibold">
-                    <FaPlus /> Crear Proyecto
+        </div>
+    );
+
+    if (!currentTeam) return (
+        <div className={UI.PAGE_CONTAINER}>
+            <div className="p-20 text-center text-slate-500">
+                <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-400">
+                    <FaUsers className="text-2xl"/>
+                </div>
+                <h3 className="text-lg font-bold text-slate-700">No tienes un equipo seleccionado</h3>
+                <p className="mb-4">Debes pertenecer a un equipo para ver proyectos.</p>
+                <Link to="/equipos" className="text-indigo-600 font-bold hover:underline">Ir a mis equipos</Link>
+            </div>
+        </div>
+    );
+
+    return (
+        <div className={UI.PAGE_CONTAINER}>
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div>
+                    <h1 className={UI.HEADER_TITLE}>Proyectos</h1>
+                    <p className={UI.HEADER_SUBTITLE}>
+                        Gestiona tus iniciativas en <strong className="text-indigo-600">{currentTeam.nombre}</strong>.
+                    </p>
+                </div>
+                <Link to="/proyectos/crear" className={UI.BTN_PRIMARY}>
+                    <FaPlus /> Nuevo Proyecto
                 </Link>
             </div>
-        )}
-    </div>
-  );
+
+            <div className="relative max-w-md mt-6 mb-8 group">
+                <FaSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+                <input 
+                    type="text" 
+                    placeholder="Buscar por nombre, descripción o sigla..." 
+                    className={`${UI.INPUT_TEXT} pl-11 shadow-sm`}
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                />
+            </div>
+
+            {/* --- SECCIÓN 1: PROYECTOS ACTIVOS --- */}
+            {activeProjects.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in mb-10">
+                    {activeProjects.map(renderProjectCard)}
+                </div>
+            ) : (
+                searchTerm === '' && archivedProjects.length > 0 ? (
+                    <div className="text-center py-10 text-slate-400 italic mb-6">
+                        No hay proyectos activos. Revisa la sección de archivados.
+                    </div>
+                ) : (
+                    searchTerm === '' && archivedProjects.length === 0 && (
+                        <div className={`${UI.CARD_BASE} p-12 text-center flex flex-col items-center justify-center min-h-[300px]`}>
+                            <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mb-4 border border-slate-100 shadow-sm">
+                                <FaFolderOpen className="text-4xl text-slate-300" />
+                            </div>
+                            <h3 className="text-xl font-bold text-slate-700 mb-2">No tienes proyectos asignados</h3>
+                            <p className="text-sm text-slate-500 mb-6">Actualmente no eres miembro de ningún proyecto en este equipo.</p>
+                            <Link to="/proyectos/crear" className={UI.BTN_PRIMARY}>
+                                Crear mi primer proyecto
+                            </Link>
+                        </div>
+                    )
+                )
+            )}
+
+            {/* --- SECCIÓN 2: OTROS (STAND BY / CERRADOS) --- */}
+            {archivedProjects.length > 0 && (
+                <div className="animate-fade-in mt-8 border-t border-slate-200 pt-8">
+                    <button 
+                        onClick={() => setShowArchived(!showArchived)}
+                        className="flex items-center gap-3 text-slate-500 hover:text-indigo-600 transition-colors group w-full mb-6 outline-none"
+                    >
+                        <div className="bg-slate-100 p-2 rounded-lg group-hover:bg-indigo-50 transition-colors shadow-sm">
+                            {showArchived ? <FaChevronUp size={12}/> : <FaChevronDown size={12}/>}
+                        </div>
+                        <span className="font-bold text-sm uppercase tracking-wider flex items-center gap-2">
+                            <FaArchive className="text-slate-400 group-hover:text-indigo-400 transition-colors"/>
+                            {showArchived ? 'Ocultar' : 'Ver'} proyectos pausados o cerrados
+                            <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full text-xs ml-1 border border-slate-200 font-mono">
+                                {archivedProjects.length}
+                            </span>
+                        </span>
+                        <div className="h-px bg-slate-100 flex-1 ml-4 group-hover:bg-indigo-100 transition-colors"></div>
+                    </button>
+
+                    {showArchived && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-slide-down opacity-80 hover:opacity-100 transition-opacity">
+                            {archivedProjects.map(renderProjectCard)}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {searchTerm !== '' && activeProjects.length === 0 && archivedProjects.length === 0 && (
+                <div className="text-center py-16 text-slate-500 bg-slate-50 rounded-2xl border border-slate-200 border-dashed">
+                    <FaSearch className="text-3xl text-slate-300 mx-auto mb-3"/>
+                    <p className="font-medium text-slate-600">No se encontraron resultados para "{searchTerm}"</p>
+                    <p className="text-xs mt-1">Prueba con otra palabra clave o sigla.</p>
+                </div>
+            )}
+        </div>
+    );
 };
 
 export default ProjectsList;

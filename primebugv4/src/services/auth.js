@@ -1,11 +1,12 @@
-// src/services/auth.js
 import { auth, db } from '../firebase'; 
 import { 
   createUserWithEmailAndPassword, 
   signInWithEmailAndPassword, 
   signOut, 
   sendPasswordResetEmail, 
-  updatePassword as firebaseUpdatePassword 
+  updatePassword as firebaseUpdatePassword,
+  verifyPasswordResetCode,
+  confirmPasswordReset as firebaseConfirmPasswordReset
 } from 'firebase/auth';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 
@@ -14,35 +15,28 @@ import { doc, setDoc, getDoc } from 'firebase/firestore';
  * @module services/auth
  */
 
-/**
- * Registra un nuevo usuario en Firebase Auth y crea su perfil en Firestore.
- */
+// --- REGISTRO ---
 export const registerUser = async (email, password, fullName) => {
   try {
-    // 1. Crear usuario en Firebase Auth
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     const user = userCredential.user;
 
-    // 2. Crear el documento de perfil en Firestore (equivalente a la tabla profiles)
     const profileData = {
       nombre_completo: fullName,
       email: email,
-      rol: 'Miembro', // Rol por defecto
+      rol: 'Miembro',
       fecha_union: new Date().toISOString()
     };
 
     await setDoc(doc(db, "profiles", user.uid), profileData);
-
     return { data: { user }, error: null };
   } catch (error) {
-    console.error('Error al registrar usuario en Firebase:', error.code);
+    console.error('Error al registrar:', error.code);
     return { data: null, error };
   }
 };
 
-/**
- * Inicia sesión de un usuario en Firebase.
- */
+// --- LOGIN ---
 export const loginUser = async (email, password) => {
   try {
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
@@ -53,9 +47,7 @@ export const loginUser = async (email, password) => {
   }
 };
 
-/**
- * Cierra la sesión del usuario actual.
- */
+// --- LOGOUT ---
 export const logoutUser = async () => {
   try {
     await signOut(auth);
@@ -66,23 +58,39 @@ export const logoutUser = async () => {
   }
 };
 
-/**
- * Envía un correo electrónico para restablecer la contraseña.
- */
+// --- RESET PASSWORD (DEFAULT FIREBASE) ---
 export const resetPassword = async (email) => {
   try {
-    // Firebase gestiona la redirección desde su propia consola (Authentication > Templates)
+    // Sin configuraciones extra: Firebase usa la plantilla y URL base de su consola.
     await sendPasswordResetEmail(auth, email);
     return { success: true, error: null };
   } catch (error) {
-    console.error('Error al restablecer contraseña:', error.code);
+    console.error('Error al enviar correo:', error.code);
     return { success: false, error };
   }
 };
 
-/**
- * Actualiza la contraseña del usuario logueado.
- */
+// --- VERIFICAR CÓDIGO (Utilidad para flujos personalizados futuros) ---
+export const verifyResetCode = async (oobCode) => {
+    try {
+        const email = await verifyPasswordResetCode(auth, oobCode);
+        return { success: true, email };
+    } catch (error) {
+        return { success: false, error: error.message };
+    }
+};
+
+// --- CONFIRMAR NUEVA PASSWORD ---
+export const confirmPasswordReset = async (oobCode, newPassword) => {
+    try {
+        await firebaseConfirmPasswordReset(auth, oobCode, newPassword);
+        return { success: true };
+    } catch (error) {
+        return { success: false, error: error.message };
+    }
+};
+
+// --- ACTUALIZAR PASSWORD (LOGUEADO) ---
 export const updatePassword = async (newPassword) => {
   try {
     const user = auth.currentUser;
@@ -91,15 +99,12 @@ export const updatePassword = async (newPassword) => {
     await firebaseUpdatePassword(user, newPassword);
     return { data: { user }, error: null };
   } catch (error) {
-    console.error('Error al actualizar contraseña:', error.code);
+    console.error('Error al actualizar:', error.code);
     return { data: null, error };
   }
 };
 
-/**
- * Obtiene la sesión actual del usuario.
- * Nota: En Firebase se usa auth.currentUser directamente.
- */
+// --- OBTENER SESIÓN ---
 export const getSession = async () => {
   return new Promise((resolve) => {
     const unsubscribe = auth.onAuthStateChanged((user) => {
@@ -109,9 +114,7 @@ export const getSession = async () => {
   });
 };
 
-/**
- * Obtiene el perfil del usuario actual desde Firestore.
- */
+// --- PERFIL ---
 export const getUserProfile = async (userId) => {
   try {
     const docRef = doc(db, "profiles", userId);
@@ -123,7 +126,7 @@ export const getUserProfile = async (userId) => {
       return { data: null, error: new Error("Perfil no encontrado") };
     }
   } catch (error) {
-    console.error('Error al obtener perfil en Firestore:', error.message);
+    console.error('Error obtener perfil:', error.message);
     return { data: null, error };
   }
 };
