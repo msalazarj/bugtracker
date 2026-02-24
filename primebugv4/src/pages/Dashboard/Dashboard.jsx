@@ -135,11 +135,12 @@ const WorkloadModal = ({ isOpen, onClose, tasks }) => {
 
 // --- COMPONENTES AUXILIARES ---
 const StatCard = ({ icon, title, value, color }) => (
-    <div className={`${UI.CARD_BASE} p-5 flex items-center gap-5 hover:shadow-md transition-all group border-l-4 border-l-transparent hover:border-l-indigo-500 min-w-[200px]`}>
-        <div className={`w-14 h-14 rounded-xl flex items-center justify-center text-2xl ${color} shadow-sm group-hover:scale-110 transition-transform`}>{icon}</div>
-        <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{title}</p>
-            <p className="text-3xl font-extrabold text-slate-800 mt-1">{value}</p>
+    // CORRECCIÓN: Se eliminó min-w-[200px] y se ajustó el padding para ser más fluido
+    <div className={`${UI.CARD_BASE} p-4 md:p-5 flex items-center gap-4 md:gap-5 hover:shadow-md transition-all group border-l-4 border-l-transparent hover:border-l-indigo-500 w-full`}>
+        <div className={`w-12 h-12 md:w-14 md:h-14 rounded-xl flex items-center justify-center text-xl md:text-2xl ${color} shadow-sm group-hover:scale-110 transition-transform shrink-0`}>{icon}</div>
+        <div className="min-w-0"> {/* min-w-0 permite que el texto trunque si es necesario */}
+            <p className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider truncate">{title}</p>
+            <p className="text-2xl md:text-3xl font-extrabold text-slate-800 mt-1">{value}</p>
         </div>
     </div>
 );
@@ -232,10 +233,22 @@ const Dashboard = () => {
         loadData();
     }, [user, hasTeam, currentTeam]);
 
+    // --- PANEL DE BIENVENIDA CORREGIDO ---
     const WelcomePanel = () => (
-        <div className="text-center bg-gradient-to-br from-indigo-600 to-violet-700 p-12 rounded-2xl shadow-xl border border-indigo-400/30 text-white relative overflow-hidden">
+        <div className="text-center bg-gradient-to-br from-indigo-600 to-violet-700 p-12 rounded-2xl shadow-xl border border-indigo-400/30 relative overflow-hidden">
+            {/* Background Pattern */}
             <div className="absolute top-0 left-0 w-full h-full bg-white/5 pattern-grid opacity-20"></div>
-            <div className="relative z-10"><FaProjectDiagram className="mx-auto text-6xl text-white/30 mb-6" /><h2 className="text-3xl font-bold tracking-tight">¡Bienvenido a PrimeBug!</h2><p className="mt-3 text-lg text-indigo-100 max-w-xl mx-auto font-light">Selecciona un equipo para ver tus métricas.</p></div>
+            
+            {/* Content con texto blanco explícito */}
+            <div className="relative z-10 flex flex-col items-center">
+                <FaProjectDiagram className="text-6xl text-white/50 mb-6" />
+                <h2 className="text-3xl font-bold tracking-tight text-white mb-2">
+                    ¡Bienvenido a PrimeBug!
+                </h2>
+                <p className="text-lg text-white font-medium max-w-xl mx-auto">
+                    Selecciona un equipo para ver tus métricas.
+                </p>
+            </div>
         </div>
     );
 
@@ -256,7 +269,8 @@ const Dashboard = () => {
                 {/* Stats Skeleton */}
                 <div className="mb-4">
                     <div className="h-3 w-48 bg-slate-200 rounded mb-4 animate-pulse"></div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                    {/* CORRECCIÓN SKELETON: Ajustado para coincidir con la nueva grilla */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
                         {[1, 2, 3, 4, 5].map(i => (
                             <div key={i} className={`${UI.CARD_BASE} p-5 h-[96px] bg-slate-50/70 animate-pulse border border-slate-100 flex items-center gap-4`}>
                                 <div className="w-14 h-14 bg-slate-200 rounded-xl"></div>
@@ -303,7 +317,12 @@ const Dashboard = () => {
 
             <div>
                 <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Métricas Globales (Activos)</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                
+                {/* CORRECCIÓN: Grilla más flexible. 
+                    - md:grid-cols-3 (Tablets/Laptops pequeñas): Se muestran en 2 filas (3 arriba, 2 abajo) en vez de solaparse.
+                    - xl:grid-cols-5 (Pantallas grandes): Se muestran las 5 en línea.
+                */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
                     <StatCard icon={<FaExclamationCircle />} title="Abiertos" value={bugs.abiertos || 0} color="bg-blue-100 text-blue-600" />
                     <StatCard icon={<FaTasks />} title="En Progreso" value={bugs.enProgreso || 0} color="bg-amber-100 text-amber-600" />
                     <StatCard icon={<FaCheckCircle />} title="Resueltos" value={bugs.resueltos || 0} color="bg-emerald-100 text-emerald-600" />

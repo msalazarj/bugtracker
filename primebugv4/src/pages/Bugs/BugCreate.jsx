@@ -134,7 +134,71 @@ const BugCreate = () => {
         return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
     };
 
-    if (loadingProject) return <div className="flex justify-center p-20"><FaSpinner className="animate-spin text-3xl text-indigo-600"/></div>;
+    // =========================================================================
+    // SKELETON LOADER
+    // =========================================================================
+    if (loadingProject) {
+        return (
+            <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
+                {/* Header Skeleton */}
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 animate-pulse">
+                    <div>
+                        <div className="h-4 w-32 bg-slate-200 rounded mb-2"></div>
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-slate-200 rounded-xl"></div>
+                            <div>
+                                <div className="h-8 w-48 bg-slate-200 rounded mb-2"></div>
+                                <div className="h-4 w-32 bg-slate-100 rounded"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Form Skeleton */}
+                <div className={`${UI.CARD_BASE} p-6 md:p-8 animate-pulse bg-white`}>
+                    <div className="space-y-8">
+                        {/* Título Input */}
+                        <div className="space-y-2">
+                            <div className="h-5 w-40 bg-slate-200 rounded"></div>
+                            <div className="h-11 w-full bg-slate-100 rounded-xl"></div>
+                        </div>
+
+                        {/* Grid Propiedades */}
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 bg-slate-50/50 p-6 rounded-2xl border border-slate-100">
+                            {[1, 2, 3].map(i => (
+                                <div key={i} className="space-y-3">
+                                    <div className="h-4 w-24 bg-slate-200 rounded"></div>
+                                    <div className="space-y-2">
+                                        {[1, 2, 3, 4].map(j => (
+                                            <div key={j} className="h-10 w-full bg-slate-100 rounded-lg"></div>
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Descripción Area */}
+                        <div className="space-y-2">
+                            <div className="h-5 w-48 bg-slate-200 rounded"></div>
+                            <div className="h-64 w-full bg-slate-100 rounded-xl border border-slate-200"></div>
+                        </div>
+
+                        {/* Attachments Area */}
+                        <div className="space-y-3">
+                            <div className="h-5 w-32 bg-slate-200 rounded"></div>
+                            <div className="h-32 w-full bg-slate-50 border-2 border-dashed border-slate-200 rounded-xl"></div>
+                        </div>
+
+                        {/* Footer Buttons */}
+                        <div className="pt-6 border-t border-slate-100 flex justify-end gap-4">
+                            <div className="h-11 w-24 bg-slate-200 rounded-xl"></div>
+                            <div className="h-11 w-40 bg-slate-200 rounded-xl"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     const CATEGORY_TYPES = ['Bug', 'Mejora', 'Tarea', 'Forma', 'Transversal'];
     const PRIORITY_TYPES = ['Baja', 'Media', 'Alta', 'Crítica'];

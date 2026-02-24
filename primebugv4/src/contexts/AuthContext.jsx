@@ -33,7 +33,18 @@ export const AuthProvider = ({ children }) => {
     
     const [loading, setLoading] = useState(true);
 
-    // Función principal para cargar el perfil y los equipos
+    // --- NUEVA FUNCIÓN: REFRESCAR USUARIO (Auth Object) ---
+    // Esta función fuerza la actualización de la foto y nombre en toda la app sin recargar la página
+    const refreshUser = async () => {
+        if (auth.currentUser) {
+            await auth.currentUser.reload();
+            // Hacemos spread {...} para forzar a React a detectar un cambio de objeto y re-renderizar
+            setUser({ ...auth.currentUser });
+            return auth.currentUser;
+        }
+    };
+
+    // Función principal para cargar el perfil de Firestore y los equipos
     const fetchUserProfile = async (uid) => {
         try {
             // 1. Leer el documento del perfil del usuario
@@ -64,14 +75,16 @@ export const AuthProvider = ({ children }) => {
                     // 4. Lógica para seleccionar el equipo activo (currentTeam)
                     if (teamsList.length > 0) {
                         setCurrentTeam(prev => {
+                            // Si ya hay uno seleccionado y sigue existiendo en la lista, mantenerlo
                             if (prev && teamsList.find(t => t.id === prev.id)) return prev;
                             
-                            // Intenta buscar el lastActiveTeamId del perfil, si no, usa el primero
+                            // Intenta buscar el lastActiveTeamId del perfil
                             if (profileData.lastActiveTeamId) {
                                 const lastActive = teamsList.find(t => t.id === profileData.lastActiveTeamId);
                                 if (lastActive) return lastActive;
                             }
                             
+                            // Si no, usa el primero por defecto
                             return teamsList[0];
                         });
                     }
@@ -114,13 +127,13 @@ export const AuthProvider = ({ children }) => {
         
         await updateProfile(user, { displayName: fullName });
 
-        // Crear perfil base en Firestore con array vacío de equipos
+        // Crear perfil base en Firestore
         await setDoc(doc(db, 'profiles', user.uid), {
             uid: user.uid,
             email: email,
             nombre_completo: fullName,
             role: 'User',
-            teamIds: [], // Inicializamos como array vacío
+            teamIds: [], 
             createdAt: new Date().toISOString()
         });
 
@@ -135,7 +148,7 @@ export const AuthProvider = ({ children }) => {
         return signOut(auth);
     };
 
-    // Helper para recargar datos manualmente (ej: después de crear un equipo)
+    // Helper para recargar datos de Firestore manualmente (ej: después de crear un equipo)
     const refreshProfile = async () => {
         if (user) await fetchUserProfile(user.uid);
     };
@@ -145,10 +158,11 @@ export const AuthProvider = ({ children }) => {
         const selected = userTeams.find(t => t.id === teamId);
         if (selected) {
             setCurrentTeam(selected);
+            // Aquí podrías agregar lógica para guardar 'lastActiveTeamId' en Firestore si quisieras persistencia
         }
     };
 
-    // --- NUEVO: Función para actualizar la información de un equipo en la memoria (hot-update) ---
+    // --- Función para actualizar la información de un equipo en la memoria (hot-update) ---
     const updateTeamInState = (teamId, newName, newDescription) => {
         // 1. Actualizar la lista de equipos
         setUserTeams(prevTeams => 
@@ -176,9 +190,10 @@ export const AuthProvider = ({ children }) => {
         signup,
         login,
         logout,
-        refreshProfile,
-        switchTeam,     // Función para cambiar de equipo
-        updateTeamInState, // <--- EXPORTADA LA NUEVA FUNCIÓN
+        refreshProfile, // Recarga datos de Firestore (Equipos)
+        refreshUser,    // Recarga datos de Auth (Foto, Nombre) -> NUEVO
+        switchTeam,     
+        updateTeamInState, 
         loading
     };
 

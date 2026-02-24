@@ -234,28 +234,24 @@ const ProjectDocumentation = () => {
   }, [projectId]);
 
   // =========================================================================
-  // SKELETON LOADER
+  // SKELETON LOADER (Cero Parpadeos)
   // =========================================================================
   if (loading) {
     return (
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-8">
             {/* Header Skeleton */}
-            <div>
-                <div className="inline-flex items-center gap-2 text-slate-400 mb-4">
-                    <FaArrowLeft size={14} /> Volver al Proyecto
-                </div>
-                <div className="flex flex-col md:flex-row justify-between items-start gap-4">
-                    <div className="space-y-2">
-                        <div className="h-10 w-64 bg-slate-200 rounded-lg animate-pulse"></div>
-                        <div className="h-5 w-96 bg-slate-100 rounded animate-pulse"></div>
-                    </div>
+            <div className="animate-pulse">
+                <div className="h-4 w-32 bg-slate-200 rounded mb-4"></div>
+                <div className="space-y-2">
+                    <div className="h-8 w-64 bg-slate-200 rounded-lg"></div>
+                    <div className="h-5 w-96 bg-slate-100 rounded"></div>
                 </div>
             </div>
 
             {/* Grid Versioned Docs Skeleton */}
             <div className="grid md:grid-cols-2 gap-6 animate-pulse">
                 {[1, 2].map(i => (
-                    <div key={i} className="bg-white rounded-xl border border-slate-200 h-[280px] flex flex-col justify-between">
+                    <div key={i} className="bg-white rounded-xl border border-slate-200 h-[280px] flex flex-col justify-between shadow-sm">
                         <div className="p-6">
                             <div className="flex justify-between items-start mb-6">
                                 <div className="flex items-center gap-3">
@@ -286,9 +282,9 @@ const ProjectDocumentation = () => {
                     </div>
                     <div className="h-9 w-32 bg-slate-200 rounded-lg"></div>
                 </div>
-                <div className="space-y-4">
+                <div className="space-y-0">
                     {[1, 2, 3].map(i => (
-                        <div key={i} className="flex items-center gap-4 py-3 border-b border-slate-50">
+                        <div key={i} className="flex items-center gap-4 py-4 border-b border-slate-50">
                             <div className="w-8 h-8 bg-slate-100 rounded"></div>
                             <div className="h-4 w-48 bg-slate-100 rounded"></div>
                             <div className="h-4 w-24 bg-slate-100 rounded ml-auto"></div>
