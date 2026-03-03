@@ -128,7 +128,7 @@ const Login = () => {
                         <div className="space-y-2">
                             <div className="flex justify-between items-center ml-1">
                                 <label className="text-sm font-bold text-slate-700">Contraseña</label>
-                                <Link to="/reset-password" class="text-sm font-bold text-indigo-600 hover:text-indigo-800 transition-colors">
+                                <Link to="/reset-password" className="text-sm font-bold text-indigo-600 hover:text-indigo-800 transition-colors">
                                     ¿Olvidaste tu contraseña?
                                 </Link>
                             </div>

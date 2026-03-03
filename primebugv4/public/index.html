@@ -2,28 +2,44 @@
 <html lang="es" class="h-full">
   <head>
     <meta charset="utf-8" />
-    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0" />
+    <link rel="icon" href="/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#6366f1" />
     <meta
       name="description"
       content="PrimeBug - Sistema profesional de gestión y seguimiento de incidencias y bugs."
     />
     
-    <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
-    <!-- <link rel="manifest" href="%PUBLIC_URL%/manifest.json" /> -->
+    <link rel="apple-touch-icon" href="/logo192.png" />
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+
+    <link 
+      rel="preload" 
+      as="style" 
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" 
+    />
+    <link 
+      rel="stylesheet" 
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" 
+      media="print" 
+      onload="this.media='all'" 
+    />
+
+    <noscript>
+      <link 
+        rel="stylesheet" 
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" 
+      />
+    </noscript>
 
     <title>PrimeBug | Control de Incidencias</title>
-
-    </head>
+  </head>
   <body class="h-full antialiased text-slate-900 bg-slate-50">
     <noscript>Necesitas habilitar JavaScript para ejecutar esta aplicación profesional.</noscript>
     
     <div id="root" class="min-h-full"></div>
-
-    </body>
+    
+  </body>
 </html>

@@ -5,14 +5,15 @@ import {
     writeBatch 
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-// Importar servicio de notificaciones
 import { createNotification, NOTIF_TYPES } from './notifications';
 
-// --- 1. GESTIÓN DE ADJUNTOS ---
+// Optimizamos creando la referencia base una sola vez
+const bugsCollection = collection(db, 'bugs');
+
+// --- 1. GESTIÓN DE ADJUNTOS (Se mantiene intacto) ---
 export const uploadBugAttachments = async (projectId, files) => {
     if (!files || files.length === 0) return [];
     
-    // Límite de tamaño: 5 MB en bytes (Seguridad para tu capa gratuita)
     const MAX_SIZE_BYTES = 5 * 1024 * 1024; 
 
     const uploadPromises = files.map(async (file) => {
@@ -21,7 +22,6 @@ export const uploadBugAttachments = async (projectId, files) => {
         }
 
         const timestamp = Date.now();
-        // Limpiamos el nombre para evitar errores en las URLs de Storage
         const safeFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
         const path = `projects/${projectId}/bugs_attachments/${timestamp}_${safeFileName}`;
         
@@ -31,8 +31,8 @@ export const uploadBugAttachments = async (projectId, files) => {
         
         return { 
             nombre: file.name, 
-            url: url, 
-            path: path, 
+            url, 
+            path, 
             tipo: file.type,
             tamanio: file.size, 
             subido_en: new Date().toISOString() 
@@ -47,17 +47,19 @@ export const uploadBugAttachments = async (projectId, files) => {
     }
 };
 
-// --- 2. CRUD PRINCIPAL ---
+// --- 2. CRUD PRINCIPAL (Optimizado con Transaction y Notificaciones) ---
 export const createBug = async (bugData) => {
     try {
         const user = auth.currentUser;
         if (!user) throw new Error("No autenticado");
+        
         const projectRef = doc(db, "projects", bugData.proyecto_id);
-        const bugRef = doc(collection(db, "bugs"));
+        const bugRef = doc(bugsCollection);
 
         await runTransaction(db, async (transaction) => {
             const projectDoc = await transaction.get(projectRef);
             if (!projectDoc.exists()) throw new Error("Proyecto no encontrado");
+            
             const pData = projectDoc.data();
             const nextSeq = (pData.last_ticket_sequence || 0) + 1;
             const numero_bug = `${pData.sigla_bug || "BUG"}-${nextSeq}`;
@@ -74,6 +76,7 @@ export const createBug = async (bugData) => {
                 prioridad: bugData.prioridad || 'Media',
                 comentarios_count: 0
             };
+
             transaction.set(bugRef, newBug);
             transaction.update(projectRef, { last_ticket_sequence: nextSeq });
             
@@ -85,7 +88,6 @@ export const createBug = async (bugData) => {
                 fecha: serverTimestamp()
             });
 
-            // DISPARADOR: Si se creó ya asignado a alguien que NO es el creador
             if (bugData.asignado_a && bugData.asignado_a !== user.uid) {
                 createNotification(
                     bugData.asignado_a,
@@ -98,16 +100,20 @@ export const createBug = async (bugData) => {
             }
         });
         return { success: true, id: bugRef.id };
-    } catch (error) { return { success: false, error: error.message }; }
+    } catch (error) { 
+        console.error("Error createBug:", error);
+        return { success: false, error: error.message }; 
+    }
 };
 
 export const getBugsByProject = async (projectId) => {
     try {
-        const q = query(collection(db, "bugs"), where("proyecto_id", "==", projectId), orderBy("creado_en", "desc"));
+        const q = query(bugsCollection, where("proyecto_id", "==", projectId), orderBy("creado_en", "desc"));
         const snapshot = await getDocs(q);
         return { success: true, data: snapshot.docs.map(d => ({ id: d.id, ...d.data() })) };
     } catch (error) {
-        const q2 = query(collection(db, "bugs"), where("proyecto_id", "==", projectId));
+        // Fallback si falla el índice de orderBy
+        const q2 = query(bugsCollection, where("proyecto_id", "==", projectId));
         const snap2 = await getDocs(q2);
         const bugs = snap2.docs.map(d => ({ id: d.id, ...d.data() }));
         bugs.sort((a,b) => (b.creado_en?.seconds || 0) - (a.creado_en?.seconds || 0));
@@ -118,7 +124,9 @@ export const getBugsByProject = async (projectId) => {
 export const getBugById = async (bugId) => {
     try {
         const docSnap = await getDoc(doc(db, "bugs", bugId));
-        return docSnap.exists() ? { success: true, data: { id: docSnap.id, ...docSnap.data() } } : { success: false, error: "Bug no encontrado" };
+        return docSnap.exists() 
+            ? { success: true, data: { id: docSnap.id, ...docSnap.data() } } 
+            : { success: false, error: "Bug no encontrado" };
     } catch (error) { return { success: false, error: error.message }; }
 };
 
@@ -150,40 +158,29 @@ export const updateBugStatus = async (bugId, newStatus, oldStatus, resolution = 
 
             transaction.update(bugRef, updates);
 
-            let desc = `cambió el estado de ${oldStatus} a ${newStatus}`;
-            if (resolution) {
-                desc += ` (${resolution})`;
-            }
-
             const activityRef = doc(collection(db, "bugs", bugId, "activity"));
             transaction.set(activityRef, {
                 tipo: 'cambio_estado',
-                descripcion: desc,
+                descripcion: `cambió el estado de ${oldStatus} a ${newStatus}${resolution ? ` (${resolution})` : ''}`,
                 oldValue: oldStatus,
                 newValue: newStatus,
-                resolution: resolution,
+                resolution,
                 user: { uid: user.uid, name: user.displayName || user.email },
                 fecha: serverTimestamp()
             });
         });
 
-        // DISPARADOR: Notificar cambio de estado (al creador y al asignado si no son ellos mismos)
         if (bugData) {
             const senderName = user.displayName || user.email;
-            const notifTitle = `Cambio de Estado: ${bugData.numero_bug}`;
-            const notifMsg = `El estado cambió a "${newStatus}".`;
             const link = `/proyectos/${bugData.proyecto_id}/bugs/${bugId}`;
 
-            // Notificar al Asignado
             if (bugData.asignado_a && bugData.asignado_a !== user.uid) {
-                createNotification(bugData.asignado_a, senderName, NOTIF_TYPES.BUG_STATUS, notifTitle, notifMsg, link);
+                createNotification(bugData.asignado_a, senderName, NOTIF_TYPES.BUG_STATUS, `Cambio de Estado: ${bugData.numero_bug}`, `El estado cambió a "${newStatus}".`, link);
             }
-            // Notificar al Creador (si es distinto al asignado para no duplicar)
             if (bugData.creado_Por_id && bugData.creado_Por_id !== user.uid && bugData.creado_Por_id !== bugData.asignado_a) {
-                createNotification(bugData.creado_Por_id, senderName, NOTIF_TYPES.BUG_STATUS, notifTitle, notifMsg, link);
+                createNotification(bugData.creado_Por_id, senderName, NOTIF_TYPES.BUG_STATUS, `Cambio de Estado: ${bugData.numero_bug}`, `El estado cambió a "${newStatus}".`, link);
             }
         }
-
         return { success: true };
     } catch (error) { return { success: false, error: error.message }; }
 };
@@ -192,14 +189,11 @@ export const updateBug = async (bugId, updates) => {
     try {
         const user = auth.currentUser;
         const bugRef = doc(db, "bugs", bugId);
-        
-        // Obtenemos los datos antes de actualizar para ver si cambió el asignado
         const bugSnap = await getDoc(bugRef);
         const oldData = bugSnap.exists() ? bugSnap.data() : null;
 
         await updateDoc(bugRef, { ...updates, actualizado_en: serverTimestamp() });
 
-        // DISPARADOR: Si se detecta un cambio explícito de asignación
         if (user && oldData && updates.asignado_a && updates.asignado_a !== oldData.asignado_a) {
             createNotification(
                 updates.asignado_a,
@@ -210,33 +204,31 @@ export const updateBug = async (bugId, updates) => {
                 `/proyectos/${oldData.proyecto_id}/bugs/${bugId}`
             );
         }
-
         return { success: true };
     } catch (error) { return { success: false, error: error.message }; }
 };
 
-// --- ASIGNACIÓN MASIVA DE COMMIT/TICKET ---
+// --- OPTIMIZACIÓN: Lógica Batch para evitar Spam ---
 export const assignCommitToBugs = async (bugIds, commitId) => {
     try {
         const user = auth.currentUser;
         if (!user) throw new Error("No autenticado");
-
+        
         const batch = writeBatch(db);
-        const affectedBugsData = []; // Para enviar notificaciones después del batch
+        const affectedBugsData = [];
 
-        // 1. Recolectar datos y preparar Batch
+        // 1. Preparamos las operaciones de base de datos
         for (const bugId of bugIds) {
             const bugRef = doc(db, "bugs", bugId);
             const bugSnap = await getDoc(bugRef);
-            
             if (bugSnap.exists()) {
-                affectedBugsData.push({ id: bugId, ...bugSnap.data() });
+                const data = bugSnap.data();
+                affectedBugsData.push({ id: bugId, ...data });
                 
-                batch.update(bugRef, { 
-                    commit_id: commitId,
-                    actualizado_en: serverTimestamp() 
-                });
-
+                // Actualizar Bug
+                batch.update(bugRef, { commit_id: commitId, actualizado_en: serverTimestamp() });
+                
+                // Añadir Actividad
                 const activityRef = doc(collection(db, "bugs", bugId, "activity"));
                 batch.set(activityRef, {
                     tipo: 'trazabilidad',
@@ -247,31 +239,63 @@ export const assignCommitToBugs = async (bugIds, commitId) => {
                 });
             }
         }
-
-        // 2. Ejecutar Transacción
+        // Ejecutamos todo junto en Firestore
         await batch.commit();
 
-        // 3. DISPARADOR: Notificar a los creadores que su bug fue actualizado con un commit
-        const senderName = user.displayName || user.email;
+        // 2. Lógica de Agrupación para Notificaciones (Evitar Spam)
+        const recipientsMap = {}; // Mapa para agrupar: { id_usuario: { projectId, bugs: [] } }
+
         affectedBugsData.forEach(bugData => {
-            // Avisar al creador del bug si no fue él mismo quien lo hizo
-            if (bugData.creado_Por_id && bugData.creado_Por_id !== user.uid) {
-                createNotification(
-                    bugData.creado_Por_id,
-                    senderName,
-                    NOTIF_TYPES.BUG_STATUS,
-                    `Trazabilidad Añadida: ${bugData.numero_bug}`,
-                    `Se ha asociado el Commit/Ticket: ${commitId}`,
-                    `/proyectos/${bugData.proyecto_id}/bugs/${bugData.id}`
-                );
+            // Notificamos al creador (puedes agregar al asignado aquí si quieres)
+            const recipientId = bugData.creado_Por_id;
+            
+            if (recipientId && recipientId !== user.uid) {
+                if (!recipientsMap[recipientId]) {
+                    recipientsMap[recipientId] = {
+                        projectId: bugData.proyecto_id, // Asumimos mismo proyecto para el lote, o usaremos el del primero
+                        bugs: []
+                    };
+                }
+                recipientsMap[recipientId].bugs.push(bugData.numero_bug || bugData.id);
             }
         });
 
+        // 3. Enviar notificaciones consolidadas
+        const senderName = user.displayName || user.email;
+
+        for (const [recipientId, data] of Object.entries(recipientsMap)) {
+            const count = data.bugs.length;
+            const bugListStr = data.bugs.length > 3 
+                ? `${data.bugs.slice(0, 3).join(', ')}...` 
+                : data.bugs.join(', ');
+
+            let title, message;
+
+            if (count === 1) {
+                title = `Trazabilidad Añadida: ${data.bugs[0]}`;
+                message = `Se ha asociado el Commit/Ticket: ${commitId}`;
+            } else {
+                title = `Trazabilidad en ${count} Bugs`;
+                message = `Se asoció el Commit ${commitId} a: ${bugListStr}`;
+            }
+
+            // Enlace inteligente: si es uno va al bug, si son varios va a la lista del proyecto
+            const link = count === 1 
+                ? `/proyectos/${data.projectId}/bugs` // Podrías poner el ID específico si lo buscas en affectedBugsData
+                : `/proyectos/${data.projectId}/bugs`;
+
+            await createNotification(
+                recipientId,
+                senderName,
+                NOTIF_TYPES.BUG_STATUS,
+                title,
+                message,
+                link
+            );
+        }
+
         return { success: true };
-    } catch (error) {
-        console.error("Error asignando commit:", error);
-        return { success: false, error: error.message };
-    }
+    } catch (error) { return { success: false, error: error.message }; }
 };
 
 // --- 4. COMENTARIOS & ACTIVIDAD ---
@@ -280,54 +304,37 @@ export const addComment = async (bugId, text, adjuntos = []) => {
         const user = auth.currentUser;
         if (!user) throw new Error("No auth");
         
-        // Guardamos el comentario en Firestore INCLUYENDO los adjuntos
         await addDoc(collection(db, "bugs", bugId, "comments"), {
-            texto: text || "", // Permitimos que el texto esté vacío si solo suben un archivo
-            adjuntos: adjuntos, // ¡AQUÍ ESTÁ LA CLAVE! Guardamos el array de archivos
+            texto: text || "",
+            adjuntos: adjuntos,
             user: { uid: user.uid, name: user.displayName || user.email },
             fecha: serverTimestamp()
         });
 
-        // DISPARADOR: Notificar comentario
-        const bugRef = doc(db, "bugs", bugId);
-        const bugSnap = await getDoc(bugRef);
+        const bugSnap = await getDoc(doc(db, "bugs", bugId));
         if (bugSnap.exists()) {
             const bugData = bugSnap.data();
             const senderName = user.displayName || user.email;
-            const notifTitle = `Nuevo Comentario en ${bugData.numero_bug}`;
-            
-            // Si el comentario solo tiene archivos, ajustamos el mensaje de la notificación
-            let notifMsg = "Adjuntó un archivo.";
-            if (text) {
-                notifMsg = `"${text.substring(0, 40)}${text.length > 40 ? '...' : ''}"`;
-            }
-            
+            const notifMsg = text ? `"${text.substring(0, 40)}${text.length > 40 ? '...' : ''}"` : "Adjuntó un archivo.";
             const link = `/proyectos/${bugData.proyecto_id}/bugs/${bugId}`;
 
             if (bugData.asignado_a && bugData.asignado_a !== user.uid) {
-                createNotification(bugData.asignado_a, senderName, NOTIF_TYPES.BUG_COMMENT, notifTitle, notifMsg, link);
+                createNotification(bugData.asignado_a, senderName, NOTIF_TYPES.BUG_COMMENT, `Nuevo Comentario en ${bugData.numero_bug}`, notifMsg, link);
             }
             if (bugData.creado_Por_id && bugData.creado_Por_id !== user.uid && bugData.creado_Por_id !== bugData.asignado_a) {
-                createNotification(bugData.creado_Por_id, senderName, NOTIF_TYPES.BUG_COMMENT, notifTitle, notifMsg, link);
+                createNotification(bugData.creado_Por_id, senderName, NOTIF_TYPES.BUG_COMMENT, `Nuevo Comentario en ${bugData.numero_bug}`, notifMsg, link);
             }
         }
-
         return { success: true };
     } catch (error) { return { success: false, error: error.message }; }
 };
 
 export const subscribeToComments = (bugId, callback) => {
     const q = query(collection(db, "bugs", bugId, "comments"), orderBy("fecha", "asc"));
-    return onSnapshot(q, (snap) => {
-        const comments = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        callback(comments);
-    });
+    return onSnapshot(q, (snap) => callback(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
 };
 
 export const subscribeToActivity = (bugId, callback) => {
     const q = query(collection(db, "bugs", bugId, "activity"), orderBy("fecha", "desc"));
-    return onSnapshot(q, (snap) => {
-        const activity = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        callback(activity);
-    });
+    return onSnapshot(q, (snap) => callback(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
 };

@@ -290,11 +290,11 @@ const BugList = () => {
         const name = user ? user.nombre_completo : fallbackName;
         
         return (
-            <div className="flex items-center gap-2 max-w-full" title={name}>
-                <div className="w-6 h-6 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-600 uppercase flex-shrink-0">
+            <div className="flex items-center gap-1.5 max-w-full" title={name}>
+                <div className="w-5 h-5 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-[9px] font-bold text-slate-600 uppercase flex-shrink-0">
                     {name.charAt(0)}
                 </div>
-                <span className="text-xs text-slate-700 font-medium truncate">{name.split(' ')[0]}</span>
+                <span className="text-[11px] text-slate-700 font-medium truncate">{name.split(' ')[0]}</span>
             </div>
         );
     };
@@ -319,13 +319,9 @@ const BugList = () => {
 
     const hasActiveFilters = selectedStatuses.length > 0 || selectedPriorities.length > 0 || selectedCategories.length > 0 || selectedAssignees.length > 0 || selectedCommits.length > 0 || dateRange.start || dateRange.end || searchTerm;
 
-    // =========================================================================
-    // SKELETON LOADER
-    // =========================================================================
     if (loading) {
         return (
             <div className={UI.PAGE_CONTAINER}>
-                {/* Header Fijo */}
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
                     <div>
                         <h1 className={UI.HEADER_TITLE}>
@@ -361,7 +357,6 @@ const BugList = () => {
             {/* Filtros */}
             <div className={`${UI.CARD_BASE} p-4 sm:p-5 mb-6 space-y-4`}>
                 
-                {/* 1. Barra de Búsqueda (Ancho completo) */}
                 <div className="relative w-full group">
                     <FaSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
                     <input 
@@ -373,13 +368,11 @@ const BugList = () => {
                     />
                 </div>
                 
-                {/* 2. Contenedor Flexible de Filtros */}
                 <div className="flex flex-wrap items-end gap-3 sm:gap-4">
                     <span className="hidden md:flex text-xs font-bold text-slate-400 uppercase tracking-wider mr-1 items-center gap-1 h-10 shrink-0">
                         <FaFilter/> Filtros:
                     </span>
                     
-                    {/* Dropdowns */}
                     <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 sm:gap-3 w-full sm:w-auto">
                         <MultiSelectDropdown label="Estado" icon={<span className="w-2 h-2 rounded-full bg-indigo-500 shrink-0"></span>} options={statusOptions} selectedValues={selectedStatuses} onChange={setSelectedStatuses} colorClass="bg-indigo-50 text-indigo-700 border-indigo-200"/>
                         <MultiSelectDropdown label="Prioridad" icon={<span className="w-2 h-2 rounded-full bg-orange-500 shrink-0"></span>} options={priorityOptions} selectedValues={selectedPriorities} onChange={setSelectedPriorities} colorClass="bg-orange-50 text-orange-700 border-orange-200"/>
@@ -398,7 +391,6 @@ const BugList = () => {
                         )}
                     </div>
 
-                    {/* Botón Limpiar */}
                     {hasActiveFilters && (
                         <button 
                             onClick={() => { 
@@ -425,11 +417,11 @@ const BugList = () => {
                 ) : (
                     <div className="overflow-x-auto">
                         {/* Se agregan anchos mínimos (min-w) para evitar solapamiento en pantallas pequeñas */}
-                        <table className="w-full text-left border-collapse min-w-[1200px]">
+                        <table className="w-full text-left border-collapse min-w-[800px]">
                             <thead className="sticky top-0 z-10">
                                 <tr className="bg-slate-50/90 backdrop-blur-sm border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap shadow-sm">
                                     {!isQaCliente && (
-                                        <th className="px-3 py-4 w-10 text-center">
+                                        <th className="px-2 py-4 w-8 text-center">
                                             <input 
                                                 type="checkbox" 
                                                 className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
@@ -439,16 +431,16 @@ const BugList = () => {
                                             />
                                         </th>
                                     )}
-                                    <th className="px-4 py-4 min-w-[100px]">ID</th>
-                                    <th className="px-2 py-4 text-center min-w-[60px]">Tipo</th>
-                                    <th className="px-4 py-4 min-w-[120px]">Ref. Req</th>
-                                    <th className="px-4 py-4 min-w-[300px]">Título / Asunto</th>
-                                    <th className="px-4 py-4 min-w-[140px]">Creado Por</th>
-                                    <th className="px-4 py-4 min-w-[140px]">Asignado A</th>
-                                    <th className="px-4 py-4 text-center min-w-[110px]">F. Creación</th>
-                                    <th className="px-4 py-4 text-center min-w-[110px]">F. Estado</th>
-                                    <th className="px-4 py-4 text-center min-w-[100px]">Prioridad</th>
-                                    <th className="px-6 py-4 text-right min-w-[130px]">Estado</th>
+                                    <th className="px-2 py-4 w-20">ID</th>
+                                    <th className="px-2 py-4 text-center w-16">Tipo</th>
+                                    <th className="px-2 py-4 w-24">Ref. Req</th>
+                                    <th className="px-3 py-4 w-auto">Título</th>
+                                    <th className="px-2 py-4 w-32">Creado Por</th>
+                                    <th className="px-2 py-4 w-32">Asignado A</th>
+                                    <th className="px-2 py-4 text-center w-24">F. Creación</th>
+                                    <th className="px-2 py-4 text-center w-24">F. Estado</th>
+                                    <th className="px-2 py-4 text-center w-24">Prioridad</th>
+                                    <th className="px-3 py-4 text-right w-28">Estado</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 bg-white">
@@ -460,7 +452,7 @@ const BugList = () => {
                                         <tr key={bug.id} onClick={() => navigate(`/proyectos/${projectId}/bugs/${bug.id}`)} className="group hover:bg-indigo-50/40 transition-colors cursor-pointer whitespace-nowrap">
                                             
                                             {!isQaCliente && (
-                                                <td className="px-3 py-3 text-center" onClick={(e) => e.stopPropagation()}>
+                                                <td className="px-2 py-3 text-center" onClick={(e) => e.stopPropagation()}>
                                                     {canBeSelected && (
                                                         <input 
                                                             type="checkbox" 
@@ -472,15 +464,17 @@ const BugList = () => {
                                                 </td>
                                             )}
 
-                                            <td className="px-4 py-3 flex items-center gap-2">
-                                                <span className="font-mono font-bold text-indigo-600 text-xs group-hover:underline">
-                                                    {formatBugId(bug)}
-                                                </span>
-                                                {bug.commit_id && (
-                                                    <Tippy content={`Commit/Ticket: ${bug.commit_id}`}>
-                                                        <span><FaCodeBranch className="text-slate-400 text-[10px]"/></span>
-                                                    </Tippy>
-                                                )}
+                                            <td className="px-2 py-3">
+                                                <div className="flex items-center gap-1">
+                                                    <span className="font-mono font-bold text-indigo-600 text-xs group-hover:underline">
+                                                        {formatBugId(bug)}
+                                                    </span>
+                                                    {bug.commit_id && (
+                                                        <Tippy content={`Commit/Ticket: ${bug.commit_id}`}>
+                                                            <span><FaCodeBranch className="text-slate-400 text-[10px]"/></span>
+                                                        </Tippy>
+                                                    )}
+                                                </div>
                                             </td>
                                             
                                             <td className="px-2 py-3 text-center">
@@ -491,7 +485,7 @@ const BugList = () => {
                                                 </Tippy>
                                             </td>
 
-                                            <td className="px-4 py-3">
+                                            <td className="px-2 py-3">
                                                 {bug.referencia_req ? (
                                                     <div className="flex items-center gap-1 text-[10px] font-mono text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded w-fit border border-slate-200">
                                                         <FaLink size={8}/> {bug.referencia_req}
@@ -499,23 +493,23 @@ const BugList = () => {
                                                 ) : <span className="text-slate-200">-</span>}
                                             </td>
 
-                                            <td className="px-4 py-3">
-                                                <div className="font-bold text-slate-700 text-sm group-hover:text-indigo-700 transition-colors truncate block max-w-[300px]" title={bug.titulo}>
+                                            <td className="px-3 py-3">
+                                                <div className="font-bold text-slate-700 text-sm group-hover:text-indigo-700 transition-colors truncate max-w-[200px] md:max-w-[300px] lg:max-w-[400px]" title={bug.titulo}>
                                                     {bug.titulo}
                                                 </div>
                                             </td>
 
-                                            <td className="px-4 py-3">{renderUser(bug.creado_Por_id || bug.creadoPor, bug.creado_por_nombre)}</td>
-                                            <td className="px-4 py-3">{renderUser(bug.asignado_a, 'Desconocido', true)}</td>
+                                            <td className="px-2 py-3">{renderUser(bug.creado_Por_id || bug.creadoPor, bug.creado_por_nombre)}</td>
+                                            <td className="px-2 py-3">{renderUser(bug.asignado_a, 'Desconocido', true)}</td>
                                             
-                                            <td className="px-4 py-3 text-center text-xs text-slate-500">{formatDate(bug.creado_en || bug.createdAt)}</td>
-                                            <td className="px-4 py-3 text-center text-xs font-medium text-slate-600">{formatDate(bug.actualizado_en || bug.updatedAt)}</td>
+                                            <td className="px-2 py-3 text-center text-xs text-slate-500">{formatDate(bug.creado_en || bug.createdAt)}</td>
+                                            <td className="px-2 py-3 text-center text-xs font-medium text-slate-600">{formatDate(bug.actualizado_en || bug.updatedAt)}</td>
                                             
-                                            <td className="px-4 py-3 text-center">
+                                            <td className="px-2 py-3 text-center">
                                                 <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide border ${getPriorityStyles(bug.prioridad)}`}>{bug.prioridad}</span>
                                             </td>
                                             
-                                            <td className="px-6 py-3 text-right">
+                                            <td className="px-3 py-3 text-center">
                                                 <span className={`inline-block px-2.5 py-0.5 rounded text-[11px] font-bold border ${getStatusStyles(bug.estado)}`}>{bug.estado}</span>
                                             </td>
                                         </tr>

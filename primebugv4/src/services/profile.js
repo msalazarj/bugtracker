@@ -12,7 +12,7 @@ import {
 
 /**
  * @file Servicio de perfiles de usuario para Firestore.
- * @description Maneja la lectura y actualización de metadatos de usuario.
+ * @description Maneja la leupdateProfilectura y actualización de metadatos de usuario.
  */
 
 /**

@@ -1,251 +1,138 @@
-import React from 'react';
-
+import React, { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
-
 import { AuthProvider, useAuth } from './contexts/AuthContext.jsx';
-
 import MainLayout from './layouts/MainLayout.jsx';
 
-
-
-// --- PÁGINAS --- //
-
-
+// --- PÁGINAS (Lazy Loading) --- //
 
 // Auth
-
-import Login from './pages/Auth/Login.jsx';
-
-import Register from './pages/Auth/Register.jsx';
-
-import ResetPassword from './pages/Auth/ResetPassword.jsx';
-
-
+const Login = lazy(() => import('./pages/Auth/Login.jsx'));
+const Register = lazy(() => import('./pages/Auth/Register.jsx'));
+const ResetPassword = lazy(() => import('./pages/Auth/ResetPassword.jsx'));
 
 // Dashboard
-
-import Dashboard from './pages/Dashboard/Dashboard.jsx';
-
-
+const Dashboard = lazy(() => import('./pages/Dashboard/Dashboard.jsx'));
 
 // Perfil
-
-import UserProfile from './pages/User/UserProfile.jsx';
-
-
+const UserProfile = lazy(() => import('./pages/User/UserProfile.jsx'));
 
 // Equipos
+const TeamList = lazy(() => import('./pages/Teams/TeamList.jsx'));
+const TeamCreate = lazy(() => import('./pages/Teams/TeamCreate.jsx'));
+const TeamMembers = lazy(() => import('./pages/Teams/TeamMembers.jsx'));
 
-import TeamList from './pages/Teams/TeamList.jsx';
-
-import TeamCreate from './pages/Teams/TeamCreate.jsx';
-
-import TeamMembers from './pages/Teams/TeamMembers.jsx'; // Eliminamos TeamDetail
-
-
-
-// Proyectosserá q
-
-import ProjectsList from './pages/Projects/ProjectsList.jsx';
-
-import ProjectCreate from './pages/Projects/ProjectCreate.jsx';
-
-import ProjectDetail from './pages/Projects/ProjectDetail.jsx';
-
-import ProjectMembers from './pages/Projects/ProjectMembers.jsx';
-
-import ProjectDocumentation from './pages/Projects/ProjectDocumentation.jsx';
-
-
+// Proyectos
+const ProjectsList = lazy(() => import('./pages/Projects/ProjectsList.jsx'));
+const ProjectCreate = lazy(() => import('./pages/Projects/ProjectCreate.jsx'));
+const ProjectDetail = lazy(() => import('./pages/Projects/ProjectDetail.jsx'));
+const ProjectMembers = lazy(() => import('./pages/Projects/ProjectMembers.jsx'));
+const ProjectDocumentation = lazy(() => import('./pages/Projects/ProjectDocumentation.jsx'));
 
 // Bugs
-
-import BugList from './pages/Bugs/BugList.jsx';
-
-import BugCreate from './pages/Bugs/BugCreate.jsx';
-
-import BugDetail from './pages/Bugs/BugDetail.jsx';
-
-
+const BugList = lazy(() => import('./pages/Bugs/BugList.jsx'));
+const BugCreate = lazy(() => import('./pages/Bugs/BugCreate.jsx'));
+const BugDetail = lazy(() => import('./pages/Bugs/BugDetail.jsx'));
 
 // Reportes
-
-import Reports from './pages/Reports/Reports.jsx';
-
-
+const Reports = lazy(() => import('./pages/Reports/Reports.jsx'));
 
 // Componente de Carga Global
-
 const FullScreenLoader = () => (
-
     <div className="fixed inset-0 bg-slate-50 flex flex-col items-center justify-center z-50">
-
         <div className="w-12 h-12 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mb-4"></div>
-
         <div className="text-slate-500 font-medium">Cargando PrimeBug...</div>
-
     </div>
-
 );
 
-
+// Componente de Carga para transiciones internas (más ligero)
+const PageLoader = () => (
+    <div className="w-full h-full min-h-[400px] flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-slate-200 border-t-indigo-600 rounded-full animate-spin"></div>
+    </div>
+);
 
 // Guardián de Ruta: Requiere tener equipo seleccionado
-
 const TeamProtectedRoute = () => {
-
     const { hasTeam, loading } = useAuth();
-
-   
-
+    
     if (loading) return <FullScreenLoader />;
-
-   
-
+    
     // Si no tiene equipo, redirigir a la lista de equipos
-
     if (!hasTeam) return <Navigate to="/equipos" replace />;
-
-   
-
+    
     return <Outlet />;
-
 };
-
-
 
 const AppContent = () => {
-
     const { user, loading } = useAuth();
-
-   
-
+    
     if (loading) return <FullScreenLoader />;
 
-
-
     return (
+        <Suspense fallback={<FullScreenLoader />}>
+            <Routes>
+                {/* --- RUTAS PÚBLICAS --- */}
+                <Route path="/login" element={!user ? <Login /> : <Navigate to="/dashboard" />} />
+                <Route path="/registro" element={!user ? <Register /> : <Navigate to="/dashboard" />} />
+                <Route path="/reset-password" element={<ResetPassword />} />
+            
+                {/* --- RUTAS PRIVADAS (Layout Principal) --- */}
+                <Route path="/*" element={user ? <MainLayout /> : <Navigate to="/login" replace />}>
+                    
+                    {/* Anidamos otro Suspense aquí para que el layout se mantenga mientras carga la página hija */}
+                    <Route element={<Suspense fallback={<PageLoader />}> <Outlet /> </Suspense>}>
+                        
+                        {/* Redirección inicial */}
+                        <Route index element={<Navigate to="/dashboard" replace />} />
+                    
+                        <Route path="dashboard" element={<Dashboard />} />
+                    
+                        {/* Perfil de Usuario */}
+                        <Route path="perfil" element={<UserProfile />} />
+                    
+                        {/* --- MÓDULO EQUIPOS --- */}
+                        <Route path="equipos" element={<TeamList />} />
+                        <Route path="equipos/crear" element={<TeamCreate />} />
+                        <Route path="equipos/:teamId/miembros" element={<TeamMembers />} />
 
-        <Routes>
+                        {/* --- RUTAS QUE REQUIEREN UN EQUIPO ACTIVO --- */}
+                        <Route element={<TeamProtectedRoute />}>
+                        
+                            {/* Reportes Globales */}
+                            <Route path="reportes" element={<Reports />} />
+                        
+                            {/* Proyectos */}
+                            <Route path="proyectos" element={<ProjectsList />} />
+                            <Route path="proyectos/crear" element={<ProjectCreate />} />
 
-            {/* --- RUTAS PÚBLICAS --- */}
-
-            <Route path="/login" element={!user ? <Login /> : <Navigate to="/dashboard" />} />
-
-            <Route path="/registro" element={!user ? <Register /> : <Navigate to="/dashboard" />} />
-
-            <Route path="/reset-password" element={<ResetPassword />} />
-
-           
-
-            {/* --- RUTAS PRIVADAS (Layout Principal) --- */}
-
-            <Route path="/*" element={user ? <MainLayout /> : <Navigate to="/login" replace />}>
-
-               
-
-                {/* Redirección inicial */}
-
-                <Route index element={<Navigate to="/dashboard" replace />} />
-
-               
-
-                <Route path="dashboard" element={<Dashboard />} />
-
-               
-
-                {/* Perfil de Usuario */}
-
-                <Route path="perfil" element={<UserProfile />} />
-
-               
-
-                {/* --- MÓDULO EQUIPOS --- */}
-
-                <Route path="equipos" element={<TeamList />} />
-
-                <Route path="equipos/crear" element={<TeamCreate />} />
-
-                {/* CORRECCIÓN: Se eliminó la ruta "equipos/:teamId" redundante */}
-
-                <Route path="equipos/:teamId/miembros" element={<TeamMembers />} />
-
-
-
-                {/* --- RUTAS QUE REQUIEREN UN EQUIPO ACTIVO --- */}
-
-                <Route element={<TeamProtectedRoute />}>
-
-                   
-
-                    {/* Reportes Globales */}
-
-                    <Route path="reportes" element={<Reports />} />
-
-                   
-
-                    {/* Proyectos */}
-
-                    <Route path="proyectos" element={<ProjectsList />} />
-
-                    <Route path="proyectos/crear" element={<ProjectCreate />} />
-
-
-
-                    {/* Contexto de un Proyecto Específico */}
-
-                    <Route path="proyectos/:projectId" element={<ProjectDetail />} />
-
-                    <Route path="proyectos/:projectId/miembros" element={<ProjectMembers />} />
-
-                    <Route path="proyectos/:projectId/documentacion" element={<ProjectDocumentation />} />
-
-                   
-
-                    {/* Gestión de Bugs */}
-
-                    <Route path="proyectos/:projectId" element={<Navigate to="bugs" replace />} />
-
-                   
-
-                    <Route path="proyectos/:projectId/bugs" element={<BugList />} />
-
-                    <Route path="proyectos/:projectId/bugs/crear" element={<BugCreate />} />
-
-                    <Route path="proyectos/:projectId/bugs/:bugId" element={<BugDetail />} />
-
+                            {/* Contexto de un Proyecto Específico */}
+                            <Route path="proyectos/:projectId" element={<ProjectDetail />} />
+                            <Route path="proyectos/:projectId/miembros" element={<ProjectMembers />} />
+                            <Route path="proyectos/:projectId/documentacion" element={<ProjectDocumentation />} />
+                        
+                            {/* Gestión de Bugs */}
+                            <Route path="proyectos/:projectId" element={<Navigate to="bugs" replace />} />
+                        
+                            <Route path="proyectos/:projectId/bugs" element={<BugList />} />
+                            <Route path="proyectos/:projectId/bugs/crear" element={<BugCreate />} />
+                            <Route path="proyectos/:projectId/bugs/:bugId" element={<BugDetail />} />
+                        </Route>
+                        
+                        {/* Catch-all */}
+                        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+                    </Route>
                 </Route>
-
-               
-
-                {/* Catch-all */}
-
-                <Route path="*" element={<Navigate to="/dashboard" replace />} />
-
-            </Route>
-
-        </Routes>
-
+            </Routes>
+        </Suspense>
     );
-
 };
 
-
-
 const App = () => (
-
     <Router>
-
       <AuthProvider>
-
         <AppContent />
-
       </AuthProvider>
-
     </Router>
-
 );
-
-
 
 export default App;

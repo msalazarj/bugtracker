@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import { 
     createUserWithEmailAndPassword, 
     signInWithEmailAndPassword, 
@@ -34,30 +34,24 @@ export const AuthProvider = ({ children }) => {
     const [loading, setLoading] = useState(true);
 
     // --- NUEVA FUNCIÓN: REFRESCAR USUARIO (Auth Object) ---
-    // Esta función fuerza la actualización de la foto y nombre en toda la app sin recargar la página
-    const refreshUser = async () => {
+    const refreshUser = useCallback(async () => {
         if (auth.currentUser) {
             await auth.currentUser.reload();
-            // Hacemos spread {...} para forzar a React a detectar un cambio de objeto y re-renderizar
             setUser({ ...auth.currentUser });
             return auth.currentUser;
         }
-    };
+    }, []);
 
     // Función principal para cargar el perfil de Firestore y los equipos
-    const fetchUserProfile = async (uid) => {
+    const fetchUserProfile = useCallback(async (uid) => {
         try {
-            // 1. Leer el documento del perfil del usuario
             const docRef = doc(db, 'profiles', uid);
             const docSnap = await getDoc(docRef);
 
             if (docSnap.exists()) {
                 const profileData = docSnap.data();
                 
-                // 2. Verificar si tiene equipos asociados (array 'teamIds')
                 if (profileData.teamIds && profileData.teamIds.length > 0) {
-                    
-                    // 3. Traer la información de TODOS los equipos en una sola consulta
                     const teamsQuery = query(
                         collection(db, 'teams'),
                         where(documentId(), 'in', profileData.teamIds)
@@ -69,27 +63,21 @@ export const AuthProvider = ({ children }) => {
                         ...d.data() 
                     }));
                     
-                    // Guardamos la lista completa en el estado
                     setUserTeams(teamsList);
 
-                    // 4. Lógica para seleccionar el equipo activo (currentTeam)
                     if (teamsList.length > 0) {
                         setCurrentTeam(prev => {
-                            // Si ya hay uno seleccionado y sigue existiendo en la lista, mantenerlo
                             if (prev && teamsList.find(t => t.id === prev.id)) return prev;
                             
-                            // Intenta buscar el lastActiveTeamId del perfil
                             if (profileData.lastActiveTeamId) {
                                 const lastActive = teamsList.find(t => t.id === profileData.lastActiveTeamId);
                                 if (lastActive) return lastActive;
                             }
                             
-                            // Si no, usa el primero por defecto
                             return teamsList[0];
                         });
                     }
                 } else {
-                    // El usuario no tiene equipos
                     setUserTeams([]);
                     setCurrentTeam(null);
                 }
@@ -99,7 +87,7 @@ export const AuthProvider = ({ children }) => {
         } catch (error) {
             console.error("Error cargando perfil/equipos:", error);
         }
-    };
+    }, []);
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -108,7 +96,6 @@ export const AuthProvider = ({ children }) => {
                 setUser(currentUser);
                 await fetchUserProfile(currentUser.uid);
             } else {
-                // Limpiar estado al cerrar sesión
                 setUser(null);
                 setUserTeams([]);
                 setCurrentTeam(null);
@@ -117,17 +104,16 @@ export const AuthProvider = ({ children }) => {
         });
 
         return unsubscribe;
-    }, []);
+    }, [fetchUserProfile]); // Añadido fetchUserProfile a dependencias
 
-    // --- Funciones de Autenticación ---
+    // --- Funciones de Autenticación (Memoizadas) ---
 
-    const signup = async (email, password, fullName) => {
+    const signup = useCallback(async (email, password, fullName) => {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         const user = userCredential.user;
         
         await updateProfile(user, { displayName: fullName });
 
-        // Crear perfil base en Firestore
         await setDoc(doc(db, 'profiles', user.uid), {
             uid: user.uid,
             email: email,
@@ -138,33 +124,31 @@ export const AuthProvider = ({ children }) => {
         });
 
         return user;
-    };
+    }, []);
 
-    const login = (email, password) => {
+    const login = useCallback((email, password) => {
         return signInWithEmailAndPassword(auth, email, password);
-    };
+    }, []);
 
-    const logout = () => {
+    const logout = useCallback(() => {
         return signOut(auth);
-    };
+    }, []);
 
-    // Helper para recargar datos de Firestore manualmente (ej: después de crear un equipo)
-    const refreshProfile = async () => {
+    const refreshProfile = useCallback(async () => {
         if (user) await fetchUserProfile(user.uid);
-    };
+    }, [user, fetchUserProfile]);
 
-    // --- Función para cambiar de equipo activo ---
-    const switchTeam = (teamId) => {
+    const switchTeam = useCallback((teamId) => {
+        // Usamos functional update para asegurar que leemos el userTeams más reciente si fuera necesario,
+        // aunque aquí userTeams es dependencia.
+        // Nota: setUserTeams no se usa aquí, solo leemos userTeams.
         const selected = userTeams.find(t => t.id === teamId);
         if (selected) {
             setCurrentTeam(selected);
-            // Aquí podrías agregar lógica para guardar 'lastActiveTeamId' en Firestore si quisieras persistencia
         }
-    };
+    }, [userTeams]);
 
-    // --- Función para actualizar la información de un equipo en la memoria (hot-update) ---
-    const updateTeamInState = (teamId, newName, newDescription) => {
-        // 1. Actualizar la lista de equipos
+    const updateTeamInState = useCallback((teamId, newName, newDescription) => {
         setUserTeams(prevTeams => 
             prevTeams.map(t => 
                 t.id === teamId 
@@ -173,29 +157,41 @@ export const AuthProvider = ({ children }) => {
             )
         );
 
-        // 2. Si el equipo editado es el que está activo actualmente, actualizar 'currentTeam'
         setCurrentTeam(prevCurrent => {
             if (prevCurrent && prevCurrent.id === teamId) {
                 return { ...prevCurrent, nombre: newName, descripcion: newDescription };
             }
             return prevCurrent;
         });
-    };
+    }, []);
 
-    const value = {
+    // MEMOIZACIÓN DEL VALOR DEL CONTEXTO
+    const value = useMemo(() => ({
         user,
-        currentTeam,    // El equipo activo actualmente
-        userTeams,      // La lista de todos los equipos del usuario
+        currentTeam,
+        userTeams,
         hasTeam: !!currentTeam,
         signup,
         login,
         logout,
-        refreshProfile, // Recarga datos de Firestore (Equipos)
-        refreshUser,    // Recarga datos de Auth (Foto, Nombre) -> NUEVO
+        refreshProfile,
+        refreshUser,
         switchTeam,     
         updateTeamInState, 
         loading
-    };
+    }), [
+        user, 
+        currentTeam, 
+        userTeams, 
+        loading, 
+        signup, 
+        login, 
+        logout, 
+        refreshProfile, 
+        refreshUser, 
+        switchTeam, 
+        updateTeamInState
+    ]);
 
     return (
         <AuthContext.Provider value={value}>
@@ -203,3 +199,5 @@ export const AuthProvider = ({ children }) => {
         </AuthContext.Provider>
     );
 };
+
+export default AuthContext;

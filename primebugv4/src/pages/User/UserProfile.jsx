@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useAuth } from '../../contexts/AuthContext'; // Importamos el hook
 import { updateProfile, sendPasswordResetEmail } from 'firebase/auth';
 import { doc, updateDoc, deleteField } from 'firebase/firestore'; 
@@ -34,7 +34,8 @@ const UserProfile = () => {
         }
     }, [user]);
 
-    const getInitials = () => {
+    // OPTIMIZACIÓN: Memoizamos el cálculo de iniciales para evitar recálculos en cada render
+    const initials = useMemo(() => {
         if (displayName) {
             const names = displayName.trim().split(' ');
             if (names.length >= 2) return (names[0][0] + names[1][0]).toUpperCase();
@@ -44,7 +45,7 @@ const UserProfile = () => {
             return user.email.substring(0, 2).toUpperCase();
         }
         return 'US';
-    };
+    }, [displayName, user?.email]);
 
     // --- ACCIÓN: ACTUALIZAR PERFIL (NOMBRE) ---
     const handleUpdateProfile = async (e) => {
@@ -219,9 +220,16 @@ const UserProfile = () => {
                                     {photoLoading ? (
                                         <FaSpinner className="animate-spin text-indigo-500" />
                                     ) : currentPhoto ? (
-                                        <img src={currentPhoto} alt="Avatar" className="w-full h-full object-cover" />
+                                        // OPTIMIZACIÓN: Carga diferida de imagen
+                                        <img 
+                                            src={currentPhoto} 
+                                            alt="Avatar" 
+                                            className="w-full h-full object-cover" 
+                                            loading="lazy" 
+                                            decoding="async"
+                                        />
                                     ) : (
-                                        <span className="text-slate-500">{getInitials()}</span>
+                                        <span className="text-slate-500">{initials}</span>
                                     )}
                                     <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                                         <FaCamera className="text-white text-xl" />
