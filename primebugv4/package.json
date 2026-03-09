@@ -4,6 +4,7 @@
   "private": true,
   "dependencies": {
     "@tippyjs/react": "^4.2.6",
+    "browser-image-compression": "^2.0.2",
     "chart.js": "^4.5.0",
     "dompurify": "^3.3.1",
     "exceljs": "^4.4.0",

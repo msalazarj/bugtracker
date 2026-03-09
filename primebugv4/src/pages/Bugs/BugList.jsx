@@ -346,7 +346,8 @@ const BugList = () => {
                     </h1>
                     <p className={UI.HEADER_SUBTITLE}>Seguimiento de calidad y tareas.</p>
                 </div>
-                <Link to={`/proyectos/${projectId}/bugs/crear`} className={`${UI.BTN_PRIMARY} shadow-lg shadow-indigo-200 w-full md:w-auto text-center justify-center`}>
+                {/* --- AQUI SE INYECTA LA CLASE 'tour-btn-reportar' --- */}
+                <Link to={`/proyectos/${projectId}/bugs/crear`} className={`tour-btn-reportar ${UI.BTN_PRIMARY} shadow-lg shadow-indigo-200 w-full md:w-auto text-center justify-center`}>
                     <FaPlus /> Reportar Bug
                 </Link>
             </div>

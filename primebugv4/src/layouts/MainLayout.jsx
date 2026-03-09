@@ -7,6 +7,9 @@ import { useAuth } from '../contexts/AuthContext.jsx'; // Añadimos Auth
 import { FaChevronRight, FaHome, FaBars, FaBell } from 'react-icons/fa'; // Añadimos FaBell
 import NotificationsDropdown from './NotificationsDropdown.jsx'; // Asegúrate que esta ruta sea correcta
 
+// --- 1. IMPORTAMOS EL TOUR ---
+import OnboardingTour from '../components/UI/OnboardingTour.jsx';
+
 // --- COMPONENTE TOPBAR (AHORA CON NOTIFICACIONES) ---
 const Topbar = ({ toggleSidebar }) => {
     const location = useLocation();
@@ -209,6 +212,10 @@ const MainLayout = () => {
 
     return (
         <div className="flex bg-slate-50 min-h-screen font-sans text-slate-900">
+            
+            {/* 2. INYECTAMOS EL TOUR GLOBALMENTE */}
+            <OnboardingTour />
+
             {/* Sidebar recibe props para controlar su visibilidad */}
             <Sidebar isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} />
             

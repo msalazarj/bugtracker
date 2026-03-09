@@ -81,7 +81,8 @@ const ProjectsList = () => {
         <div 
             key={project.id} 
             onClick={() => navigate(`/proyectos/${project.id}`)}
-            className={`${UI.CARD_BASE} p-6 hover:shadow-md hover:border-indigo-200 transition-all cursor-pointer group flex flex-col h-full relative overflow-hidden bg-white`}
+            /* --- AQUÍ SE AÑADE LA CLASE 'tour-project-card' --- */
+            className={`tour-project-card ${UI.CARD_BASE} p-6 hover:shadow-md hover:border-indigo-200 transition-all cursor-pointer group flex flex-col h-full relative overflow-hidden bg-white`}
         >
             <div className="flex justify-between items-start mb-4">
                 <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-xl shadow-sm border transition-transform duration-300 group-hover:scale-110 ${

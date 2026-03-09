@@ -1,22 +1,27 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { useAuth } from '../../contexts/AuthContext'; // Importamos el hook
+import { useAuth } from '../../contexts/AuthContext';
+import { getProjectsByTeam } from '../../services/projects';
+import { useNavigate } from 'react-router-dom';
 import { updateProfile, sendPasswordResetEmail } from 'firebase/auth';
 import { doc, updateDoc, deleteField } from 'firebase/firestore'; 
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage'; 
 import { db, auth, storage } from '../../firebase';
 
-// --- DESIGN SYSTEM ---
+// IMPORTAMOS EL COMPRESOR DE IMÁGENES
+import imageCompression from 'browser-image-compression';
+
 import { UI } from '../../utils/design';
 import { 
     FaUser, FaLock, FaCamera, FaSave, FaSpinner, 
-    FaEnvelope, FaCheckCircle, FaExclamationCircle, FaTrashAlt 
+    FaEnvelope, FaCheckCircle, FaExclamationCircle, FaTrashAlt,
+    FaQuestionCircle
 } from 'react-icons/fa';
 
 const MAX_NAME_LENGTH = 30;
 
 const UserProfile = () => {
-    // 1. Extraemos refreshUser del contexto
-    const { user, refreshUser } = useAuth();
+    const { user, refreshUser, currentTeam } = useAuth();
+    const navigate = useNavigate();
     
     const [displayName, setDisplayName] = useState(user?.displayName || '');
     const [currentPhoto, setCurrentPhoto] = useState(user?.photoURL || null);
@@ -34,143 +39,112 @@ const UserProfile = () => {
         }
     }, [user]);
 
-    // OPTIMIZACIÓN: Memoizamos el cálculo de iniciales para evitar recálculos en cada render
     const initials = useMemo(() => {
         if (displayName) {
             const names = displayName.trim().split(' ');
             if (names.length >= 2) return (names[0][0] + names[1][0]).toUpperCase();
             return names[0].substring(0, 2).toUpperCase();
         }
-        if (user?.email) {
-            return user.email.substring(0, 2).toUpperCase();
-        }
+        if (user?.email) return user.email.substring(0, 2).toUpperCase();
         return 'US';
     }, [displayName, user?.email]);
 
-    // --- ACCIÓN: ACTUALIZAR PERFIL (NOMBRE) ---
     const handleUpdateProfile = async (e) => {
         e.preventDefault();
-        
         if (displayName.length > MAX_NAME_LENGTH) {
             setMsg({ type: 'error', text: `El nombre no puede exceder los ${MAX_NAME_LENGTH} caracteres.` });
             return;
         }
-
         setLoading(true);
         setMsg({ type: '', text: '' });
 
         try {
-            await updateProfile(auth.currentUser, {
-                displayName: displayName
-            });
-
+            await updateProfile(auth.currentUser, { displayName: displayName });
             const userRef = doc(db, "profiles", user.uid);
-            await updateDoc(userRef, {
-                nombre_completo: displayName,
-                updated_at: new Date()
-            }).catch(async () => {
-                console.warn("Perfil en Firestore no existía.");
-            });
-
-            // 2. ACTUALIZACIÓN GLOBAL SIN REFRESH
+            await updateDoc(userRef, { nombre_completo: displayName, updated_at: new Date() }).catch(() => {});
             await refreshUser(); 
-
             setMsg({ type: 'success', text: 'Perfil actualizado correctamente.' });
-            
         } catch (error) {
-            console.error(error);
             setMsg({ type: 'error', text: 'Error al actualizar el perfil.' });
         } finally {
             setLoading(false);
         }
     };
 
-    // --- ACCIÓN: SUBIR FOTO ---
+    // --- LÓGICA DE COMPRESIÓN IMPLEMENTADA AQUÍ ---
     const handleFileChange = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
-
         if (!file.type.startsWith('image/')) {
             setMsg({ type: 'error', text: 'El archivo debe ser una imagen.' });
             return;
         }
-        if (file.size > 2 * 1024 * 1024) { 
-            setMsg({ type: 'error', text: 'La imagen no puede pesar más de 2MB.' });
+        
+        // Aumentamos el límite de entrada a 5MB (ya que lo vamos a comprimir)
+        if (file.size > 5 * 1024 * 1024) { 
+            setMsg({ type: 'error', text: 'La imagen original no puede pesar más de 5MB.' });
             return;
         }
-
+        
         setPhotoLoading(true);
         setMsg({ type: '', text: '' });
 
         try {
+            // Opciones de compresión agresiva pero sin perder calidad visual
+            const options = {
+                maxSizeMB: 0.5, // La reducimos a máximo 500KB
+                maxWidthOrHeight: 1024, // 1024px es más que suficiente para un avatar
+                useWebWorker: true // Usa un hilo secundario para no congelar la UI
+            };
+
+            // 1. Comprimimos la imagen
+            const compressedFile = await imageCompression(file, options);
+
+            // 2. Subimos el archivo COMPRIMIDO a Firebase
             const storageRef = ref(storage, `profile_photos/${user.uid}`);
-            await uploadBytes(storageRef, file);
+            await uploadBytes(storageRef, compressedFile);
             const photoURL = await getDownloadURL(storageRef);
 
+            // 3. Actualizamos los perfiles
             await updateProfile(auth.currentUser, { photoURL });
-
             const userRef = doc(db, "profiles", user.uid);
-            await updateDoc(userRef, { 
-                photoURL: photoURL,
-                updated_at: new Date()
-            }).catch(() => console.warn("Doc no existe"));
-
-            setCurrentPhoto(photoURL);
+            await updateDoc(userRef, { photoURL: photoURL, updated_at: new Date() }).catch(() => {});
             
-            // 3. ACTUALIZACIÓN GLOBAL PARA FOTO
+            setCurrentPhoto(photoURL);
             await refreshUser();
-
-            setMsg({ type: 'success', text: 'Foto actualizada.' });
-
+            setMsg({ type: 'success', text: 'Foto actualizada y optimizada.' });
         } catch (error) {
-            console.error("Error subiendo foto:", error);
-            setMsg({ type: 'error', text: 'Error al subir la imagen.' });
+            console.error(error);
+            setMsg({ type: 'error', text: 'Error al procesar o subir la imagen.' });
         } finally {
             setPhotoLoading(false);
         }
     };
 
-    // --- ACCIÓN: ELIMINAR FOTO ---
     const handleDeletePhoto = async () => {
         if (!window.confirm("¿Quieres eliminar tu foto de perfil y volver a las iniciales?")) return;
-
         setPhotoLoading(true);
         setMsg({ type: '', text: '' });
 
         try {
             const storageRef = ref(storage, `profile_photos/${user.uid}`);
-            try {
-                await deleteObject(storageRef);
-            } catch (err) {
-                console.warn("No se encontró archivo en storage.");
-            }
+            try { await deleteObject(storageRef); } catch (err) {}
 
             await updateProfile(auth.currentUser, { photoURL: "" });
-
             const userRef = doc(db, "profiles", user.uid);
-            await updateDoc(userRef, { 
-                photoURL: deleteField(),
-                updated_at: new Date()
-            });
+            await updateDoc(userRef, { photoURL: deleteField(), updated_at: new Date() });
 
             setCurrentPhoto(null);
-            
-            // 4. ACTUALIZACIÓN GLOBAL AL BORRAR
             await refreshUser();
-
             setMsg({ type: 'success', text: 'Foto eliminada.' });
-
         } catch (error) {
-            console.error("Error eliminando foto:", error);
             setMsg({ type: 'error', text: 'Error al eliminar la foto.' });
         } finally {
             setPhotoLoading(false);
         }
     };
 
-    const triggerFileInput = () => {
-        fileInputRef.current.click();
-    };
+    const triggerFileInput = () => fileInputRef.current.click();
 
     const handleResetPassword = async () => {
         if (!user.email) return;
@@ -179,9 +153,47 @@ const UserProfile = () => {
             await sendPasswordResetEmail(auth, user.email);
             setMsg({ type: 'success', text: `Se ha enviado un correo a ${user.email} para restablecer tu contraseña.` });
         } catch (error) {
-            console.error(error);
             setMsg({ type: 'error', text: 'No se pudo enviar el correo. Intenta más tarde.' });
         } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleRestartTour = async () => {
+        if (!currentTeam) {
+            setMsg({ type: 'error', text: 'Debes pertenecer a un equipo para iniciar el tutorial.' });
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            return;
+        }
+
+        setLoading(true);
+        setMsg({ type: '', text: '' }); 
+
+        try {
+            const res = await getProjectsByTeam(currentTeam.id, user.uid);
+            if (!res.success || !res.data || res.data.length === 0) {
+                setMsg({ 
+                    type: 'error', 
+                    text: 'Debes tener al menos un proyecto activo en tu equipo para realizar el recorrido guiado.' 
+                });
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                setLoading(false);
+                return;
+            }
+
+            if (!window.confirm("¿Deseas reiniciar el tutorial interactivo? Te llevaremos a la pantalla de inicio.")) {
+                setLoading(false);
+                return;
+            }
+            
+            const userRef = doc(db, "profiles", user.uid);
+            await updateDoc(userRef, { has_seen_onboarding: false });
+            
+            window.dispatchEvent(new Event('restartOnboardingTour'));
+            navigate('/dashboard');
+        } catch (error) {
+            console.error(error);
+            setMsg({ type: 'error', text: 'Error al reiniciar el tutorial.' });
             setLoading(false);
         }
     };
@@ -189,7 +201,6 @@ const UserProfile = () => {
     return (
         <div className={UI.PAGE_CONTAINER}>
             <div className="max-w-3xl mx-auto space-y-8">
-                
                 <div className="mb-6">
                     <h1 className={UI.HEADER_TITLE}>Mi Perfil</h1>
                     <p className={UI.HEADER_SUBTITLE}>Gestiona tu identidad y seguridad.</p>
@@ -220,14 +231,7 @@ const UserProfile = () => {
                                     {photoLoading ? (
                                         <FaSpinner className="animate-spin text-indigo-500" />
                                     ) : currentPhoto ? (
-                                        // OPTIMIZACIÓN: Carga diferida de imagen
-                                        <img 
-                                            src={currentPhoto} 
-                                            alt="Avatar" 
-                                            className="w-full h-full object-cover" 
-                                            loading="lazy" 
-                                            decoding="async"
-                                        />
+                                        <img src={currentPhoto} alt="Avatar" className="w-full h-full object-cover" />
                                     ) : (
                                         <span className="text-slate-500">{initials}</span>
                                     )}
@@ -235,34 +239,16 @@ const UserProfile = () => {
                                         <FaCamera className="text-white text-xl" />
                                     </div>
                                 </div>
-
                                 {currentPhoto && !photoLoading && (
-                                    <button 
-                                        onClick={handleDeletePhoto}
-                                        className="absolute bottom-0 right-0 bg-red-100 text-red-600 p-2 rounded-full border-2 border-white shadow-md hover:bg-red-200 transition-colors z-10"
-                                        title="Eliminar foto"
-                                    >
+                                    <button onClick={handleDeletePhoto} className="absolute bottom-0 right-0 bg-red-100 text-red-600 p-2 rounded-full border-2 border-white shadow-md hover:bg-red-200 transition-colors z-10" title="Eliminar foto">
                                         <FaTrashAlt size={12} />
                                     </button>
                                 )}
                             </div>
-
-                            <button 
-                                type="button" 
-                                onClick={triggerFileInput}
-                                className="text-xs font-bold text-indigo-600 hover:underline"
-                                disabled={photoLoading}
-                            >
+                            <button type="button" onClick={triggerFileInput} className="text-xs font-bold text-indigo-600 hover:underline" disabled={photoLoading}>
                                 {photoLoading ? 'Procesando...' : 'Cambiar foto'}
                             </button>
-                            
-                            <input 
-                                type="file" 
-                                ref={fileInputRef} 
-                                className="hidden" 
-                                accept="image/*" 
-                                onChange={handleFileChange} 
-                            />
+                            <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />
                         </div>
 
                         <form onSubmit={handleUpdateProfile} className="flex-1 w-full space-y-4">
@@ -273,23 +259,10 @@ const UserProfile = () => {
                                         {displayName.length}/{MAX_NAME_LENGTH}
                                     </span>
                                 </div>
-                                <input 
-                                    type="text" 
-                                    className={UI.INPUT_TEXT}
-                                    value={displayName}
-                                    onChange={(e) => setDisplayName(e.target.value)}
-                                    placeholder="Tu nombre visible"
-                                    maxLength={MAX_NAME_LENGTH}
-                                />
-                                <p className="text-xs text-slate-400">Este nombre será visible para tu equipo en tareas y comentarios.</p>
+                                <input type="text" className={UI.INPUT_TEXT} value={displayName} onChange={(e) => setDisplayName(e.target.value)} maxLength={MAX_NAME_LENGTH} />
                             </div>
-
                             <div className="flex justify-end pt-2">
-                                <button 
-                                    type="submit" 
-                                    disabled={loading || displayName.length === 0} 
-                                    className={`${UI.BTN_PRIMARY} px-6`}
-                                >
+                                <button type="submit" disabled={loading || displayName.length === 0} className={`${UI.BTN_PRIMARY} px-6`}>
                                     {loading ? <FaSpinner className="animate-spin" /> : <><FaSave /> Guardar Cambios</>}
                                 </button>
                             </div>
@@ -302,7 +275,6 @@ const UserProfile = () => {
                         <FaLock className="text-orange-500"/>
                         <h2 className="font-bold text-slate-800 text-lg">Seguridad</h2>
                     </div>
-
                     <div className="flex flex-col md:flex-row justify-between items-center gap-6">
                         <div className="space-y-1">
                             <h3 className="font-bold text-slate-700">Contraseña</h3>
@@ -310,18 +282,27 @@ const UserProfile = () => {
                                 <FaEnvelope className="text-slate-400"/>
                                 <span>Asociada al correo: <strong>{user?.email}</strong></span>
                             </div>
-                            <p className="text-xs text-slate-400 mt-1 max-w-md">
-                                Si necesitas cambiar tu contraseña, te enviaremos un enlace seguro a tu correo electrónico para que puedas hacerlo.
+                        </div>
+                        <button type="button" onClick={handleResetPassword} disabled={loading} className="w-full md:w-auto bg-white border border-slate-300 text-slate-700 font-bold py-2.5 px-4 rounded-xl hover:bg-slate-50 hover:text-orange-600 transition-colors shadow-sm whitespace-nowrap">
+                            Enviar correo de recuperación
+                        </button>
+                    </div>
+                </div>
+
+                <div className={`${UI.CARD_BASE} p-8 border-l-4 border-l-blue-400`}>
+                    <div className="flex items-center gap-2 mb-6 border-b border-slate-100 pb-4">
+                        <FaQuestionCircle className="text-blue-500"/>
+                        <h2 className="font-bold text-slate-800 text-lg">Ayuda y Preferencias</h2>
+                    </div>
+                    <div className="flex flex-col md:flex-row justify-between items-center gap-6">
+                        <div className="space-y-1">
+                            <h3 className="font-bold text-slate-700">Tutorial de Bienvenida</h3>
+                            <p className="text-sm text-slate-500 mt-1 max-w-md">
+                                Si ha pasado un tiempo sin conectarte y no recuerdas cómo utilizar PrimeBug, puedes volver a activar el recorrido guiado por la plataforma.
                             </p>
                         </div>
-
-                        <button 
-                            type="button"
-                            onClick={handleResetPassword}
-                            disabled={loading}
-                            className="w-full md:w-auto bg-white border border-slate-300 text-slate-700 font-bold py-2.5 px-4 rounded-xl hover:bg-slate-50 hover:text-orange-600 transition-colors shadow-sm whitespace-nowrap"
-                        >
-                            Enviar correo de recuperación
+                        <button type="button" onClick={handleRestartTour} disabled={loading} className="w-full md:w-auto bg-blue-50 border border-blue-200 text-blue-700 font-bold py-2.5 px-4 rounded-xl hover:bg-blue-100 transition-colors shadow-sm whitespace-nowrap flex justify-center">
+                            {loading ? <FaSpinner className="animate-spin" /> : 'Reiniciar Tutorial'}
                         </button>
                     </div>
                 </div>

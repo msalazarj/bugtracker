@@ -1,15 +1,68 @@
 const getEmailTemplate = (userName, mainMessage, data, link) => {
-  const priorityColors = {
-    'Baja': '#10b981',    // Verde
-    'Media': '#f59e0b',   // Amarillo/Naranja
-    'Alta': '#f97316',    // Naranja Oscuro
-    'Crítica': '#ef4444'  // Rojo
-  };
-  
-  const pColor = priorityColors[data.prioridad] || '#64748b';
+  let tableHtml = '';
 
-  // Usamos data.eventoDetalle si existe, si no un texto genérico
-  const eventDetail = data.evento || "Notificación";
+  // Solo construimos la tabla de detalles técnicos si el objeto 'data' existe
+  if (data) {
+    const priorityColors = {
+      'Baja': '#10b981',    // Verde
+      'Media': '#f59e0b',   // Amarillo/Naranja
+      'Alta': '#f97316',    // Naranja Oscuro
+      'Crítica': '#ef4444'  // Rojo
+    };
+    
+    const pColor = priorityColors[data.prioridad] || '#64748b';
+    // Usamos data.evento si existe, si no un texto genérico
+    const eventDetail = data.evento || "Notificación";
+
+    tableHtml = `
+      <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e2e8f0; border-radius:6px; background-color:#f8fafc; margin-bottom: 25px;">
+        <tr>
+          <td width="30%" style="padding:12px 20px; border-bottom:1px solid #e2e8f0; color:#64748b; font-size:11px; font-weight:bold; text-transform:uppercase; font-family: Arial, sans-serif;">
+            PROYECTO
+          </td>
+          <td style="padding:12px 20px; border-bottom:1px solid #e2e8f0; color:#334155; font-size:14px; font-weight:bold; font-family: Arial, sans-serif;">
+            ${data.proyecto}
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:12px 20px; border-bottom:1px solid #e2e8f0; color:#64748b; font-size:11px; font-weight:bold; text-transform:uppercase; font-family: Arial, sans-serif;">
+            SIGLA
+          </td>
+          <td style="padding:12px 20px; border-bottom:1px solid #e2e8f0; color:#4f46e5; font-size:14px; font-family:'Courier New', Courier, monospace; font-weight:bold;">
+            ${data.sigla}
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:12px 20px; border-bottom:1px solid #e2e8f0; color:#64748b; font-size:11px; font-weight:bold; text-transform:uppercase; font-family: Arial, sans-serif;">
+            TÍTULO
+          </td>
+          <td style="padding:12px 20px; border-bottom:1px solid #e2e8f0; color:#334155; font-size:14px; font-family: Arial, sans-serif;">
+            ${data.titulo}
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:12px 20px; border-bottom:1px solid #e2e8f0; color:#64748b; font-size:11px; font-weight:bold; text-transform:uppercase; font-family: Arial, sans-serif;">
+            EVENTO
+          </td>
+          <td style="padding:12px 20px; border-bottom:1px solid #e2e8f0; color:#334155; font-size:14px; font-family: Arial, sans-serif;">
+            ${eventDetail}
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:12px 20px; color:#64748b; font-size:11px; font-weight:bold; text-transform:uppercase; font-family: Arial, sans-serif;">
+            PRIORIDAD
+          </td>
+          <td style="padding:12px 20px; color:${pColor}; font-weight:bold; font-size:14px; font-family: Arial, sans-serif;">
+            ● ${data.prioridad}
+          </td>
+        </tr>
+      </table>
+    `;
+  }
+
+  // Texto dinámico para el botón (Si hay datos de bug es "Ver en Plataforma", si no, "Comenzar Ahora")
+  const buttonText = data ? "Ver en Plataforma" : "Comenzar Ahora";
+  const buttonPaddingTop = data ? "10px" : "0px";
 
   return `
 <!DOCTYPE html>
@@ -45,63 +98,16 @@ const getEmailTemplate = (userName, mainMessage, data, link) => {
                 ${mainMessage}
               </p>
 
-              <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e2e8f0; border-radius:6px; background-color:#f8fafc;">
-                
-                <tr>
-                  <td width="30%" style="padding:12px 20px; border-bottom:1px solid #e2e8f0; color:#64748b; font-size:11px; font-weight:bold; text-transform:uppercase; font-family: Arial, sans-serif;">
-                    PROYECTO
-                  </td>
-                  <td style="padding:12px 20px; border-bottom:1px solid #e2e8f0; color:#334155; font-size:14px; font-weight:bold; font-family: Arial, sans-serif;">
-                    ${data.proyecto}
-                  </td>
-                </tr>
-
-                <tr>
-                  <td style="padding:12px 20px; border-bottom:1px solid #e2e8f0; color:#64748b; font-size:11px; font-weight:bold; text-transform:uppercase; font-family: Arial, sans-serif;">
-                    SIGLA
-                  </td>
-                  <td style="padding:12px 20px; border-bottom:1px solid #e2e8f0; color:#4f46e5; font-size:14px; font-family:'Courier New', Courier, monospace; font-weight:bold;">
-                    ${data.sigla}
-                  </td>
-                </tr>
-
-                <tr>
-                  <td style="padding:12px 20px; border-bottom:1px solid #e2e8f0; color:#64748b; font-size:11px; font-weight:bold; text-transform:uppercase; font-family: Arial, sans-serif;">
-                    TÍTULO
-                  </td>
-                  <td style="padding:12px 20px; border-bottom:1px solid #e2e8f0; color:#334155; font-size:14px; font-family: Arial, sans-serif;">
-                    ${data.titulo}
-                  </td>
-                </tr>
-
-                <tr>
-                  <td style="padding:12px 20px; border-bottom:1px solid #e2e8f0; color:#64748b; font-size:11px; font-weight:bold; text-transform:uppercase; font-family: Arial, sans-serif;">
-                    EVENTO
-                  </td>
-                  <td style="padding:12px 20px; border-bottom:1px solid #e2e8f0; color:#334155; font-size:14px; font-family: Arial, sans-serif;">
-                    ${eventDetail}
-                  </td>
-                </tr>
-
-                <tr>
-                  <td style="padding:12px 20px; color:#64748b; font-size:11px; font-weight:bold; text-transform:uppercase; font-family: Arial, sans-serif;">
-                    PRIORIDAD
-                  </td>
-                  <td style="padding:12px 20px; color:${pColor}; font-weight:bold; font-size:14px; font-family: Arial, sans-serif;">
-                    ● ${data.prioridad}
-                  </td>
-                </tr>
-
-              </table>
+              ${tableHtml}
 
               <table width="100%" cellpadding="0" cellspacing="0">
                 <tr>
-                  <td align="center" style="padding-top:35px;">
+                  <td align="center" style="padding-top:${buttonPaddingTop};">
                     <a href="${link}" target="_blank"
                        style="background-color:#4f46e5; color:#ffffff; text-decoration:none; 
                               padding:14px 28px; display:inline-block; border-radius:6px;
                               font-weight:bold; font-size:14px; font-family: Arial, sans-serif;">
-                      Ver en Plataforma
+                      ${buttonText}
                     </a>
                   </td>
                 </tr>

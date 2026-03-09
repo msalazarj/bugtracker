@@ -61,8 +61,8 @@ const BugCreate = () => {
         setFileError(''); // Limpiamos errores previos
         const newFiles = Array.from(e.target.files);
         
-        // Validación visual de peso antes de subir (5MB)
-        const MAX_MB = 5;
+        // Validación visual de peso: Permitimos hasta 10MB porque el Service los comprimirá a 2MB
+        const MAX_MB = 10;
         const oversizedFiles = newFiles.filter(f => f.size > MAX_MB * 1024 * 1024);
         
         if (oversizedFiles.length > 0) {
@@ -238,7 +238,7 @@ const BugCreate = () => {
                     <div className="space-y-2">
                         <div className="flex justify-between items-center">
                             <label className="text-sm font-bold text-slate-700 flex items-center gap-2">
-                                <FaHeading className="text-indigo-500"/> Título del problema <span className="text-red-500">*</span>
+                                <FaHeading className="text-indigo-500"/> Título <span className="text-red-500">*</span>
                             </label>
                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${formData.titulo.length >= 70 ? 'bg-red-100 text-red-600' : 'bg-slate-100 text-slate-400'}`}>
                                 {formData.titulo.length}/70
@@ -250,7 +250,8 @@ const BugCreate = () => {
                             placeholder="Ej: Error al intentar guardar el formulario de contacto..."
                             maxLength={70} 
                             value={formData.titulo}
-                            onChange={e => setFormData({...formData, titulo: e.target.value})}
+                            // FIX: Usar prev para evitar estado obsoleto
+                            onChange={e => setFormData(prev => ({...prev, titulo: e.target.value}))}
                             autoFocus required
                         />
                     </div>
@@ -271,7 +272,8 @@ const BugCreate = () => {
                                         <button
                                             key={catType}
                                             type="button"
-                                            onClick={() => setFormData({...formData, categoria: catType})}
+                                            // FIX: Usar prev para evitar estado obsoleto
+                                            onClick={() => setFormData(prev => ({...prev, categoria: catType}))}
                                             className={`w-full flex items-center gap-3 p-2.5 rounded-lg border transition-all duration-200 text-left text-sm ${
                                                 isSelected
                                                 ? `${config.color} ring-1 ring-offset-0 shadow-sm font-bold`
@@ -299,7 +301,8 @@ const BugCreate = () => {
                                         <button
                                             key={prio}
                                             type="button"
-                                            onClick={() => setFormData({...formData, prioridad: prio})}
+                                            // FIX: Usar prev para evitar estado obsoleto
+                                            onClick={() => setFormData(prev => ({...prev, prioridad: prio}))}
                                             className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm border transition-all ${
                                                 isSelected 
                                                 ? `${getPriorityStyles(prio)} shadow-sm font-bold border-transparent ring-1 ring-black/5` 
@@ -319,7 +322,8 @@ const BugCreate = () => {
                             <UserSelect 
                                 members={members}
                                 value={formData.asignado_a}
-                                onChange={(id) => setFormData({...formData, asignado_a: id})}
+                                // FIX: Usar prev para evitar que se borren titulo y descripcion
+                                onChange={(id) => setFormData(prev => ({...prev, asignado_a: id}))}
                                 label="Asignar a"
                             />
 
@@ -341,7 +345,8 @@ const BugCreate = () => {
                                         className={UI.INPUT_TEXT + " pl-8 uppercase font-mono tracking-wider"} 
                                         placeholder="REQ-105"
                                         value={formData.referencia_req}
-                                        onChange={e => setFormData({...formData, referencia_req: e.target.value.toUpperCase()})}
+                                        // FIX: Usar prev
+                                        onChange={e => setFormData(prev => ({...prev, referencia_req: e.target.value.toUpperCase()}))}
                                     />
                                 </div>
                                 <p className="text-[10px] text-slate-400 text-right">Opcional</p>
@@ -358,7 +363,8 @@ const BugCreate = () => {
                             <ReactQuill 
                                 theme="snow"
                                 value={formData.descripcion}
-                                onChange={(value) => setFormData({...formData, descripcion: value})}
+                                // FIX: Usar prev para el editor
+                                onChange={(value) => setFormData(prev => ({...prev, descripcion: value}))}
                                 className="h-full" 
                                 placeholder="Describe detalladamente los pasos para reproducir el error, comportamiento esperado vs el actual..."
                                 modules={{
@@ -372,8 +378,8 @@ const BugCreate = () => {
                         </div>
                     </div>
 
-                    {/* SECCIÓN DE ADJUNTOS MEJORADA */}
-                    <div className="space-y-3 pt-2">
+                    {/* --- ZONA ADJUNTOS CON LA CLASE DEL TOUR (.tour-attachments) --- */}
+                    <div className="tour-attachments space-y-3 pt-2">
                         <div className="flex items-center justify-between">
                             <label className="text-sm font-bold text-slate-700 flex items-center gap-2">
                                 <FaPaperclip className="text-indigo-500"/> Archivos Adjuntos
@@ -402,7 +408,7 @@ const BugCreate = () => {
                                     <FaCloudUploadAlt className="text-2xl" />
                                 </div>
                                 <p className="text-sm font-medium text-slate-700">Haz clic o arrastra archivos aquí</p>
-                                <p className="text-xs text-slate-400 mt-1">Imágenes, Logs o Documentos (Máx. 5MB por archivo)</p>
+                                <p className="text-xs text-slate-400 mt-1">Imágenes, Logs o Documentos (Máx. 10MB por archivo)</p>
                             </div>
                         </div>
 
@@ -457,10 +463,12 @@ const BugCreate = () => {
                         >
                             Cancelar
                         </button>
+                        
+                        {/* --- BOTÓN DE SUBMIT CON LA CLASE DEL TOUR (.tour-btn-submit) --- */}
                         <button 
                             type="submit" 
                             disabled={isSubmitting} 
-                            className={`${UI.BTN_PRIMARY} w-full sm:min-w-[200px] py-3 justify-center shadow-lg shadow-indigo-200`}
+                            className={`tour-btn-submit ${UI.BTN_PRIMARY} w-full sm:min-w-[200px] py-3 justify-center shadow-lg shadow-indigo-200`}
                         >
                             {isSubmitting ? (
                                 <><FaSpinner className="animate-spin text-lg" /> {uploadProgress}</>

@@ -158,18 +158,14 @@ exports.onUserCreate = onDocumentCreated("profiles/{uid}", async (event) => {
     if (!userData || !userData.email) return;
 
     const subject = `🚀 Bienvenido a PrimeBug`;
-    const message = `Tu cuenta profesional ha sido creada exitosamente.`;
+    
+    // Mensaje cálido y amigable sin formato tabular
+    const message = `Tu cuenta ha sido creada exitosamente.<br><br>Estamos muy emocionados de tenerte en nuestra plataforma. PrimeBug está diseñado para ayudarte a reportar, rastrear y dar solución a las incidencias de tus proyectos de la forma más eficiente y colaborativa posible.`;
+    
     const link = `${APP_URL}/dashboard`;
     
-    const welcomeData = {
-        proyecto: "PrimeBug Core",
-        sigla: "SISTEMA",
-        titulo: "Registro Exitoso",
-        evento: "Bienvenida",
-        prioridad: "Alta"
-    };
-
-    const html = getEmailTemplate(userData.nombre_completo, message, welcomeData, link);
+    // Al pasar 'null' como tercer parámetro, la plantilla oculta la tabla técnica
+    const html = getEmailTemplate(userData.nombre_completo, message, null, link);
 
     try {
         await transporter.sendMail({ 

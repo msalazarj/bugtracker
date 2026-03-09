@@ -7,34 +7,56 @@ import {
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { createNotification, NOTIF_TYPES } from './notifications';
 
+// Importamos el compresor de imágenes
+import imageCompression from 'browser-image-compression';
+
 // Optimizamos creando la referencia base una sola vez
 const bugsCollection = collection(db, 'bugs');
 
-// --- 1. GESTIÓN DE ADJUNTOS (Se mantiene intacto) ---
+// --- 1. GESTIÓN DE ADJUNTOS (Con Compresión Conservadora) ---
 export const uploadBugAttachments = async (projectId, files) => {
     if (!files || files.length === 0) return [];
     
-    const MAX_SIZE_BYTES = 5 * 1024 * 1024; 
+    // Aumentamos el límite de entrada inicial a 10MB (para permitir fotos de celular)
+    // porque luego las comprimiremos a 2MB antes de subirlas.
+    const MAX_INPUT_SIZE_BYTES = 10 * 1024 * 1024; 
 
     const uploadPromises = files.map(async (file) => {
-        if (file.size > MAX_SIZE_BYTES) {
-            throw new Error(`El archivo "${file.name}" supera el límite de 5MB.`);
+        if (file.size > MAX_INPUT_SIZE_BYTES) {
+            throw new Error(`El archivo "${file.name}" supera el límite máximo de entrada (10MB).`);
+        }
+
+        let fileToUpload = file;
+
+        // COMPRESIÓN CONSERVADORA: Solo si es imagen y pesa más de 500KB
+        if (file.type.startsWith('image/') && file.size > 500 * 1024) {
+            try {
+                const options = {
+                    maxSizeMB: 2, // Límite generoso de 2MB para no perder calidad
+                    maxWidthOrHeight: 1920, // Mantenemos resolución Full HD para textos nítidos
+                    useWebWorker: true
+                };
+                fileToUpload = await imageCompression(file, options);
+            } catch (compressionError) {
+                console.warn(`No se pudo comprimir la imagen ${file.name}, se subirá original:`, compressionError);
+                // Si la compresión falla, intentamos subir el original como fallback
+            }
         }
 
         const timestamp = Date.now();
-        const safeFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+        const safeFileName = fileToUpload.name.replace(/[^a-zA-Z0-9.-]/g, '_');
         const path = `projects/${projectId}/bugs_attachments/${timestamp}_${safeFileName}`;
         
         const storageRef = ref(storage, path);
-        await uploadBytes(storageRef, file);
+        await uploadBytes(storageRef, fileToUpload);
         const url = await getDownloadURL(storageRef);
         
         return { 
-            nombre: file.name, 
+            nombre: fileToUpload.name, 
             url, 
             path, 
-            tipo: file.type,
-            tamanio: file.size, 
+            tipo: fileToUpload.type,
+            tamanio: fileToUpload.size, 
             subido_en: new Date().toISOString() 
         };
     });
